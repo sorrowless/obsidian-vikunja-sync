@@ -16,6 +16,8 @@ export interface PluginSettings {
   syncIntervalValue: number;
   syncIntervalUnit: SyncIntervalUnit;
   syncOnFileChange: boolean;
+  /** When true, Sync now previews actions without writing notes or Vikunja. */
+  dryRunDefault: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -28,6 +30,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   syncIntervalValue: 15,
   syncIntervalUnit: 'minutes',
   syncOnFileChange: false,
+  dryRunDefault: false,
 };
 
 /** Minimum allowed interval in minutes (architecture: at least 1 minute). */
@@ -54,4 +57,9 @@ export function createEmptyMapping(): NoteProjectMapping {
     notePath: '',
     projectId: 0,
   };
+}
+
+/** Normalize a vault-relative note path from settings. */
+export function normalizeMappingPath(path: string): string {
+  return path.trim().replace(/^\/+/, '');
 }

@@ -42,5 +42,11 @@ These options are independent. The manual **Sync now** command is always availab
 | Interval value | Number ≥ 1 |
 | Interval unit | Minutes or hours |
 | Sync on file change | After you edit a mapped note, wait 10 seconds from the last change, then sync that mapping |
+| Dry-run by default | When enabled, **Sync now** / ribbon only preview. Automatic triggers still perform a real sync. |
 
 Minimum interval is one minute.
+
+Commands:
+
+- **Sync now** — run sync (or dry-run if the setting above is on)
+- **Preview sync (dry run)** — always preview without writing

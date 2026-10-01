@@ -1,6 +1,6 @@
 # Task Format
 
-> **Status:** The plugin is not implemented yet. This page describes the Markdown shape the plugin will read and write.
+> **Status:** This page describes the Markdown shape the plugin reads and writes for synced tasks.
 
 Tasks live in ordinary Markdown notes as checklist items, compatible with Obsidian Tasks.
 

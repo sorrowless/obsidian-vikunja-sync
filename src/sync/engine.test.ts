@@ -114,10 +114,7 @@ describe('syncAllMappings', () => {
     } as unknown as VikunjaClient;
 
     const ledger = emptyLedger();
-    const result = await syncAllMappings(
-      [{ notePath: 'Tasks.md', projectId: 7 }],
-      ledger,
-      {
+    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 7 }], ledger, [], {
         baseUrl: 'https://vikunja.example',
         conflictPolicy: 'prefer-obsidian',
         client,
@@ -156,7 +153,7 @@ describe('syncAllMappings', () => {
     } as unknown as VikunjaClient;
 
     const ledger = emptyLedger();
-    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, {
+    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
       baseUrl: 'https://vikunja.example',
       conflictPolicy: 'prefer-obsidian',
       client,
@@ -201,7 +198,7 @@ describe('syncAllMappings', () => {
       deleteRelation: vi.fn(),
     } as unknown as VikunjaClient;
 
-    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, {
+    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
       baseUrl: 'https://vikunja.example',
       conflictPolicy: 'prefer-obsidian',
       client,
@@ -245,7 +242,7 @@ describe('syncAllMappings', () => {
       deleteRelation: vi.fn(),
     } as unknown as VikunjaClient;
 
-    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, {
+    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
       baseUrl: 'https://vikunja.example',
       conflictPolicy: 'prefer-obsidian',
       client,
@@ -288,7 +285,7 @@ describe('syncAllMappings', () => {
       deleteRelation: vi.fn(),
     } as unknown as VikunjaClient;
 
-    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, {
+    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
       baseUrl: 'https://vikunja.example',
       conflictPolicy: 'prefer-obsidian',
       client,
@@ -326,7 +323,7 @@ describe('syncAllMappings', () => {
       deleteRelation: vi.fn(),
     } as unknown as VikunjaClient;
 
-    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, {
+    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
       baseUrl: 'https://vikunja.example',
       conflictPolicy: 'prefer-obsidian',
       client,
@@ -378,7 +375,7 @@ describe('syncAllMappings', () => {
       vikunjaUpdated: '2026-01-01T00:00:00Z',
     });
 
-    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, {
+    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
       baseUrl: 'https://vikunja.example',
       conflictPolicy: 'prefer-obsidian',
       client,
@@ -394,5 +391,100 @@ describe('syncAllMappings', () => {
       relationKind: 'subtask',
     });
     expect(notes.get('Tasks.md')).toContain('[Child idea](https://vikunja.example/tasks/2)');
+  });
+
+  it('keeps pending links when note write fails and recovers on the next run', async () => {
+    const notes = new Map<string, string>([['Tasks.md', '- [ ] Buy milk\n']]);
+    const createTask = vi.fn().mockResolvedValue(
+      task({ id: 42, title: 'Buy milk', updated: '2026-02-01T00:00:00Z' }),
+    );
+    const client = {
+      listProjectTasks: vi.fn().mockResolvedValue([]),
+      createTask,
+      updateTask: vi.fn(),
+      createRelation: vi.fn(),
+      deleteRelation: vi.fn(),
+    } as unknown as VikunjaClient;
+
+    const ledger = emptyLedger();
+    const pending: import('./ledger').PendingLink[] = [];
+
+    const failed = await syncAllMappings(
+      [{ notePath: 'Tasks.md', projectId: 7 }],
+      ledger,
+      pending,
+      {
+        baseUrl: 'https://vikunja.example',
+        conflictPolicy: 'prefer-obsidian',
+        client,
+        readNote: async (path) => notes.get(path) ?? '',
+        writeNote: async () => {
+          throw new Error('disk full');
+        },
+      },
+    );
+
+    expect(failed.mappings[0]?.errors[0]).toContain('Write note failed');
+    expect(Object.keys(ledger.entries)).toHaveLength(0);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.taskId).toBe(42);
+    expect(notes.get('Tasks.md')).toBe('- [ ] Buy milk\n');
+
+    const recovered = await syncAllMappings(
+      [{ notePath: 'Tasks.md', projectId: 7 }],
+      ledger,
+      pending,
+      {
+        baseUrl: 'https://vikunja.example',
+        conflictPolicy: 'prefer-obsidian',
+        client,
+        readNote: async (path) => notes.get(path) ?? '',
+        writeNote: async (path, content) => {
+          notes.set(path, content);
+        },
+      },
+    );
+
+    expect(recovered.mappings[0]?.counts.recoveredPendingLinks).toBe(1);
+    expect(createTask).toHaveBeenCalledTimes(1);
+    expect(notes.get('Tasks.md')).toContain('tasks/42');
+    expect(pending).toHaveLength(0);
+    expect(ledger.entries[ledgerEntryKey(mappingKey('Tasks.md', 7), 42)]).toBeTruthy();
+  });
+
+  it('dry-run does not write notes, ledger, or call createTask', async () => {
+    const notes = new Map<string, string>([['Tasks.md', '- [ ] Buy milk\n']]);
+    const createTask = vi.fn();
+    const client = {
+      listProjectTasks: vi.fn().mockResolvedValue([]),
+      createTask,
+      updateTask: vi.fn(),
+      createRelation: vi.fn(),
+      deleteRelation: vi.fn(),
+    } as unknown as VikunjaClient;
+
+    const ledger = emptyLedger();
+    const result = await syncAllMappings(
+      [{ notePath: 'Tasks.md', projectId: 7 }],
+      ledger,
+      [],
+      {
+        baseUrl: 'https://vikunja.example',
+        conflictPolicy: 'prefer-obsidian',
+        client,
+        dryRun: true,
+        readNote: async (path) => notes.get(path) ?? '',
+        writeNote: async () => {
+          throw new Error('should not write');
+        },
+      },
+    );
+
+    expect(result.dryRun).toBe(true);
+    expect(result.message.startsWith('Vikunja Sync dry-run')).toBe(true);
+    expect(result.mappings[0]?.counts.createdRemote).toBe(1);
+    expect(createTask).not.toHaveBeenCalled();
+    expect(Object.keys(ledger.entries)).toHaveLength(0);
+    expect(notes.get('Tasks.md')).toBe('- [ ] Buy milk\n');
   });
 });

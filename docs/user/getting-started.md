@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status:** The plugin syncs mapped notes with Vikunja projects. Configure settings, run **Test connection**, then **Sync now**.
+> **Status:** The plugin provides the originally requested bidirectional sync for mapped notes. Configure settings, run **Test connection**, then **Sync now** (or enable automatic triggers).
 
 This plugin syncs checklist tasks between Obsidian notes and projects on a Vikunja instance (including self-hosted).
 

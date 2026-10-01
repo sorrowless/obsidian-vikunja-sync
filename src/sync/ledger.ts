@@ -23,8 +23,50 @@ export interface LedgerStore {
   entries: Record<string, LedgerEntry>;
 }
 
+/** Remembers Vikunja creates that were not yet written into the note. */
+export interface PendingLink {
+  mappingKey: string;
+  taskId: number;
+  title: string;
+  description: string;
+  done: boolean;
+  parentTaskId: number | null;
+  vikunjaUpdated: string;
+}
+
 export function emptyLedger(): LedgerStore {
   return { entries: {} };
+}
+
+export function cloneLedger(ledger: LedgerStore): LedgerStore {
+  const entries: Record<string, LedgerEntry> = {};
+  for (const [key, entry] of Object.entries(ledger.entries)) {
+    entries[key] = { ...entry };
+  }
+  return { entries };
+}
+
+/**
+ * Copy mapping-scoped entries from `source` into `target`, and drop target entries
+ * for that mapping that no longer exist in source (should not delete unresolved).
+ * Simpler: replace all keys belonging to mappingKey prefix from source.
+ */
+export function commitMappingLedger(
+  target: LedgerStore,
+  source: LedgerStore,
+  mappingKeyValue: string,
+): void {
+  const prefix = `${mappingKeyValue}::`;
+  for (const key of Object.keys(target.entries)) {
+    if (key.startsWith(prefix)) {
+      delete target.entries[key];
+    }
+  }
+  for (const [key, entry] of Object.entries(source.entries)) {
+    if (key.startsWith(prefix)) {
+      target.entries[key] = { ...entry };
+    }
+  }
 }
 
 export function mappingKey(notePath: string, projectId: number): string {

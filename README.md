@@ -2,7 +2,7 @@
 
 Bidirectional sync between Obsidian checklist tasks and [Vikunja](https://vikunja.io/) projects.
 
-> **Status:** Phase 3 sync engine is implemented (ledger, bidirectional sync, triggers). Hardening and extended fields come later.
+> **Status:** Core bidirectional sync is implemented and hardened (Phase 4). Optional extended fields (dates, labels, delete policy, …) are Phase 5.
 
 ## What it will do
 
@@ -71,10 +71,21 @@ Or copy `main.js`, `manifest.json`, and `styles.css` into
 
 Then enable **Vikunja Sync** under Community plugins.
 
+## Commands
+
+| Command | Action |
+| --- | --- |
+| **Sync now** | Run bidirectional sync for all mappings (respects “Dry-run by default”) |
+| **Preview sync (dry run)** | Classify and report what would change without writing notes or Vikunja |
+
+A ribbon **sync** icon also starts **Sync now**.
+
+Automatic triggers (startup / interval / file change) always perform a real sync.
+
 ## Requirements
 
 - Obsidian with community plugins enabled
-- A Vikunja instance and API token (needed once sync is implemented)
+- A Vikunja instance and API token
 - Optional: [Obsidian Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) for richer task workflows in the vault
 
 ## CI

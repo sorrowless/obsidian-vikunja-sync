@@ -21,7 +21,7 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h2', { text: 'Vikunja Sync' });
     containerEl.createEl('p', {
-      text: 'Configure connection, note ↔ project mappings, conflict policy, and sync triggers. Use Test connection to verify the API token. Sync now runs bidirectional sync for all mappings.',
+      text: 'Configure connection, note ↔ project mappings, conflict policy, and sync triggers. Commands: Sync now, Preview sync (dry run). Ribbon button also starts sync.',
     });
 
     this.renderConnectionSection(containerEl);
@@ -220,6 +220,18 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
             this.plugin.settings.syncOnFileChange = value;
             await this.plugin.saveSettings();
           }),
+      );
+
+    new Setting(containerEl)
+      .setName('Dry-run by default')
+      .setDesc(
+        'When enabled, Sync now / ribbon only preview changes. Use command “Preview sync (dry run)” explicitly anytime; automatic triggers always perform a real sync.',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.dryRunDefault).onChange(async (value) => {
+          this.plugin.settings.dryRunDefault = value;
+          await this.plugin.saveSettings();
+        }),
       );
   }
 }

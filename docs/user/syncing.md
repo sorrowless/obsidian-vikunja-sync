@@ -1,6 +1,6 @@
 # Syncing
 
-> **Status:** Sync behaviour below is implemented for v1 fields (title, description, done, nesting). Use **Sync now** or enable automatic triggers in settings.
+> **Status:** Sync behaviour below is implemented for v1 fields (title, description, done, nesting). Use **Sync now**, the ribbon button, or enable automatic triggers. **Preview sync (dry run)** reports actions without writing.
 
 ## Overview
 
@@ -48,12 +48,13 @@ The remaining side is left alone, and the sync report lists the case as unresolv
 
 ## When sync runs
 
-- **Manual:** command palette → sync now (exact command name TBD)
+- **Manual:** command palette → **Vikunja Sync: Sync now**, or the ribbon sync icon
+- **Preview:** command palette → **Vikunja Sync: Preview sync (dry run)**
 - **Startup:** optional
 - **Interval:** optional, at least every 1 minute
 - **After editing a mapped file:** optional, 10 seconds after the last change to that file
 
-Only one sync runs at a time; overlapping triggers wait for a single follow-up run.
+Only one sync runs at a time; overlapping triggers coalesce into a single follow-up run. Writes performed by the plugin do not re-trigger file-change sync.
 
 ## After a sync
 

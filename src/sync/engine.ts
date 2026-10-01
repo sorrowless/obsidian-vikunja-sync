@@ -4,6 +4,8 @@ import type { ConflictPolicy } from '../settings';
 import type { VikunjaClient } from '../vikunja/client';
 import type { VikunjaTask } from '../vikunja/types';
 import {
+  cloneLedger,
+  commitMappingLedger,
   contentHash,
   contentSnapshot,
   descriptionFromLines,
@@ -13,6 +15,7 @@ import {
   mappingKey,
   type LedgerEntry,
   type LedgerStore,
+  type PendingLink,
 } from './ledger';
 import { indexRemoteTasks } from './remote';
 import {
@@ -33,6 +36,8 @@ export interface SyncEngineOptions {
   client: VikunjaClient;
   readNote: (path: string) => Promise<string>;
   writeNote: (path: string, content: string) => Promise<void>;
+  /** When true, list remotes but do not mutate Vikunja, notes, or the real ledger. */
+  dryRun?: boolean;
   now?: () => string;
 }
 
@@ -44,6 +49,7 @@ export interface MappingSyncCounts {
   conflictsResolved: number;
   unchanged: number;
   unresolvedRemovals: number;
+  recoveredPendingLinks: number;
 }
 
 export interface MappingSyncResult {
@@ -52,11 +58,14 @@ export interface MappingSyncResult {
   counts: MappingSyncCounts;
   errors: string[];
   unresolvedTaskIds: number[];
+  /** Creates that reached Vikunja but could not be written into the note. */
+  pendingLinks: PendingLink[];
 }
 
 export interface SyncRunResult {
   mappings: MappingSyncResult[];
   message: string;
+  dryRun: boolean;
 }
 
 interface MutableTask {
@@ -78,54 +87,87 @@ interface MutableTask {
 export async function syncAllMappings(
   mappings: SyncMapping[],
   ledger: LedgerStore,
+  pendingLinks: PendingLink[],
   options: SyncEngineOptions,
 ): Promise<SyncRunResult> {
   const results: MappingSyncResult[] = [];
+  const dryRun = options.dryRun === true;
+  const nextPending = [...pendingLinks];
 
   for (const mapping of mappings) {
-    if (!mapping.notePath || mapping.projectId <= 0) {
+    const notePath = normalizeNotePath(mapping.notePath);
+    const projectId = mapping.projectId;
+
+    if (!notePath || projectId <= 0) {
       results.push({
-        notePath: mapping.notePath,
-        projectId: mapping.projectId,
+        notePath,
+        projectId,
         counts: emptyCounts(),
         errors: ['Mapping is incomplete (note path and project id are required)'],
         unresolvedTaskIds: [],
+        pendingLinks: [],
       });
       continue;
     }
 
     try {
-      results.push(await syncOneMapping(mapping, ledger, options));
+      const result = await syncOneMapping(
+        { notePath, projectId },
+        ledger,
+        nextPending,
+        { ...options, dryRun },
+      );
+      results.push(result);
+
+      // Replace pending links for this mapping with whatever the run produced.
+      const key = mappingKey(notePath, projectId);
+      for (let i = nextPending.length - 1; i >= 0; i -= 1) {
+        if (nextPending[i]?.mappingKey === key) {
+          nextPending.splice(i, 1);
+        }
+      }
+      if (!dryRun) {
+        nextPending.push(...result.pendingLinks);
+      }
     } catch (error) {
       results.push({
-        notePath: mapping.notePath,
-        projectId: mapping.projectId,
+        notePath,
+        projectId,
         counts: emptyCounts(),
         errors: [errorMessage(error)],
         unresolvedTaskIds: [],
+        pendingLinks: [],
       });
     }
   }
+
+  // Mutate caller's pendingLinks array to the new set.
+  pendingLinks.splice(0, pendingLinks.length, ...nextPending);
 
   const errorCount = results.reduce((sum, item) => sum + item.errors.length, 0);
   const totals = results.reduce((acc, item) => addCounts(acc, item.counts), emptyCounts());
 
   return {
     mappings: results,
-    message: summarizeRun(totals, errorCount, mappings.length),
+    dryRun,
+    message: summarizeRun(totals, errorCount, mappings.length, dryRun),
   };
 }
 
 async function syncOneMapping(
   mapping: SyncMapping,
   ledger: LedgerStore,
+  pendingLinks: PendingLink[],
   options: SyncEngineOptions,
 ): Promise<MappingSyncResult> {
   const counts = emptyCounts();
   const errors: string[] = [];
   const unresolvedIds: number[] = [];
+  const createdPending: PendingLink[] = [];
   const now = options.now ?? (() => new Date().toISOString());
+  const dryRun = options.dryRun === true;
   const key = mappingKey(mapping.notePath, mapping.projectId);
+  const workingLedger = cloneLedger(ledger);
 
   const markdown = await options.readNote(mapping.notePath);
   const parsed = parseNoteTasks(markdown, { vikunjaBaseUrl: options.baseUrl });
@@ -142,24 +184,55 @@ async function syncOneMapping(
     }
   });
 
+  const mappingPending = pendingLinks.filter((item) => item.mappingKey === key);
+
   for (const local of localOrder) {
     const parentId = local.parent?.vikunjaTaskId ?? null;
 
     if (local.vikunjaTaskId === null) {
-      try {
-        const created = await options.client.createTask(mapping.projectId, {
+      const recovered = takePendingMatch(mappingPending, local.title, parentId);
+      if (recovered) {
+        local.vikunjaTaskId = recovered.taskId;
+        local.dirty = true;
+        markRootDirty(local);
+        localById.set(recovered.taskId, local);
+        writeLedger(workingLedger, key, {
+          id: recovered.taskId,
           title: local.title,
           description: descriptionFromLines(local.descriptionLines),
-          done: local.done ?? false,
-        });
-        if (parentId !== null) {
+          done: local.done ?? recovered.done,
+          updated: recovered.vikunjaUpdated,
+        }, parentId, now);
+        counts.recoveredPendingLinks += 1;
+        counts.createdRemote += 1;
+        continue;
+      }
+
+      try {
+        const created = dryRun
+          ? fakeCreatedTask(local, mapping.projectId, now)
+          : await options.client.createTask(mapping.projectId, {
+              title: local.title,
+              description: descriptionFromLines(local.descriptionLines),
+              done: local.done ?? false,
+            });
+        if (parentId !== null && !dryRun) {
           await ensureSubtaskRelation(options.client, created.id, parentId);
         }
         local.vikunjaTaskId = created.id;
         local.dirty = true;
         markRootDirty(local);
         localById.set(created.id, local);
-        writeLedger(ledger, key, created, parentId, now);
+        writeLedger(workingLedger, key, created, parentId, now);
+        createdPending.push({
+          mappingKey: key,
+          taskId: created.id,
+          title: local.title,
+          description: descriptionFromLines(local.descriptionLines),
+          done: local.done ?? false,
+          parentTaskId: parentId,
+          vikunjaUpdated: created.updated || now(),
+        });
         counts.createdRemote += 1;
       } catch (error) {
         errors.push(`Create remote "${local.title}": ${errorMessage(error)}`);
@@ -169,7 +242,7 @@ async function syncOneMapping(
 
     const taskId = local.vikunjaTaskId;
     const remote = remoteMap.get(taskId);
-    const entry = ledger.entries[ledgerEntryKey(key, taskId)];
+    const entry = workingLedger.entries[ledgerEntryKey(key, taskId)];
 
     if (!remote) {
       if (entry) {
@@ -189,12 +262,25 @@ async function syncOneMapping(
 
     if (!entry) {
       if (localHash === remoteHash) {
-        writeLedger(ledger, key, remote.task, remote.parentTaskId, now);
+        writeLedger(workingLedger, key, remote.task, remote.parentTaskId, now);
         counts.unchanged += 1;
       } else if (options.conflictPolicy === 'prefer-obsidian') {
-        await pushLocal(options, local, remote.task, parentId, key, ledger, now, counts, errors, true);
+        await pushLocal(
+          options,
+          local,
+          remote.task,
+          parentId,
+          remote.parentTaskId,
+          key,
+          workingLedger,
+          now,
+          counts,
+          errors,
+          true,
+          dryRun,
+        );
       } else {
-        pullRemote(local, remote.task, remote.parentTaskId, key, ledger, now, counts, true);
+        pullRemote(local, remote.task, remote.parentTaskId, key, workingLedger, now, counts, true);
       }
       continue;
     }
@@ -210,19 +296,45 @@ async function syncOneMapping(
     }
 
     if (localChanged && !remoteChanged) {
-      await pushLocal(options, local, remote.task, parentId, key, ledger, now, counts, errors, false);
+      await pushLocal(
+        options,
+        local,
+        remote.task,
+        parentId,
+        remote.parentTaskId,
+        key,
+        workingLedger,
+        now,
+        counts,
+        errors,
+        false,
+        dryRun,
+      );
       continue;
     }
 
     if (!localChanged && remoteChanged) {
-      pullRemote(local, remote.task, remote.parentTaskId, key, ledger, now, counts, false);
+      pullRemote(local, remote.task, remote.parentTaskId, key, workingLedger, now, counts, false);
       continue;
     }
 
     if (options.conflictPolicy === 'prefer-obsidian') {
-      await pushLocal(options, local, remote.task, parentId, key, ledger, now, counts, errors, true);
+      await pushLocal(
+        options,
+        local,
+        remote.task,
+        parentId,
+        remote.parentTaskId,
+        key,
+        workingLedger,
+        now,
+        counts,
+        errors,
+        true,
+        dryRun,
+      );
     } else {
-      pullRemote(local, remote.task, remote.parentTaskId, key, ledger, now, counts, true);
+      pullRemote(local, remote.task, remote.parentTaskId, key, workingLedger, now, counts, true);
     }
   }
 
@@ -236,7 +348,7 @@ async function syncOneMapping(
     if (localById.has(remote.task.id)) {
       continue;
     }
-    const entry = ledger.entries[ledgerEntryKey(key, remote.task.id)];
+    const entry = workingLedger.entries[ledgerEntryKey(key, remote.task.id)];
     if (entry) {
       entry.unresolved = true;
       unresolvedIds.push(remote.task.id);
@@ -257,13 +369,48 @@ async function syncOneMapping(
       roots.push(created);
     }
     localById.set(remote.task.id, created);
-    writeLedger(ledger, key, remote.task, remote.parentTaskId, now);
+    writeLedger(workingLedger, key, remote.task, remote.parentTaskId, now);
     counts.createdLocal += 1;
   }
 
   const nextMarkdown = writeMarkdown(markdown, roots, options.baseUrl);
-  if (nextMarkdown !== markdown) {
-    await options.writeNote(mapping.notePath, nextMarkdown);
+  const noteChanged = nextMarkdown !== markdown;
+
+  if (noteChanged) {
+    if (dryRun) {
+      // Preview only — do not write the note or commit the ledger.
+      return {
+        notePath: mapping.notePath,
+        projectId: mapping.projectId,
+        counts,
+        errors,
+        unresolvedTaskIds: unresolvedIds,
+        pendingLinks: [],
+      };
+    }
+
+    try {
+      await options.writeNote(mapping.notePath, nextMarkdown);
+    } catch (error) {
+      errors.push(`Write note failed: ${errorMessage(error)}`);
+      // Keep pending links for creates so the next run can attach ids instead of duplicating.
+      return {
+        notePath: mapping.notePath,
+        projectId: mapping.projectId,
+        counts: {
+          ...counts,
+          // Note was not updated; do not claim local creates landed in the file.
+          createdLocal: 0,
+        },
+        errors,
+        unresolvedTaskIds: unresolvedIds,
+        pendingLinks: createdPending,
+      };
+    }
+  }
+
+  if (!dryRun) {
+    commitMappingLedger(ledger, workingLedger, key);
   }
 
   return {
@@ -272,6 +419,8 @@ async function syncOneMapping(
     counts,
     errors,
     unresolvedTaskIds: unresolvedIds,
+    // Note write succeeded (or no write needed) — pending creates are resolved.
+    pendingLinks: [],
   };
 }
 
@@ -280,12 +429,14 @@ async function pushLocal(
   local: MutableTask,
   remote: VikunjaTask,
   parentId: number | null,
+  currentParentId: number | null,
   key: string,
   ledger: LedgerStore,
   now: () => string,
   counts: MappingSyncCounts,
   errors: string[],
   isConflict: boolean,
+  dryRun: boolean,
 ): Promise<void> {
   try {
     const update: { title: string; description: string; done?: boolean } = {
@@ -296,9 +447,19 @@ async function pushLocal(
       update.done = local.done;
     }
 
-    const updated = await options.client.updateTask(remote.id, update);
-    const currentParent = remote.related_tasks?.parenttask?.[0]?.id ?? null;
-    await syncParentRelation(options.client, remote.id, parentId, currentParent);
+    const updated = dryRun
+      ? {
+          ...remote,
+          title: update.title,
+          description: update.description,
+          done: update.done ?? remote.done,
+          updated: now(),
+        }
+      : await options.client.updateTask(remote.id, update);
+
+    if (!dryRun) {
+      await syncParentRelation(options.client, remote.id, parentId, currentParentId);
+    }
 
     writeLedger(
       ledger,
@@ -378,10 +539,48 @@ async function ensureSubtaskRelation(
   childId: number,
   parentId: number,
 ): Promise<void> {
-  await client.createRelation(childId, {
-    otherTaskId: parentId,
-    relationKind: 'subtask',
-  });
+  try {
+    await client.createRelation(childId, {
+      otherTaskId: parentId,
+      relationKind: 'subtask',
+    });
+  } catch (error) {
+    const message = errorMessage(error).toLowerCase();
+    if (message.includes('already') || message.includes('exist')) {
+      return;
+    }
+    throw error;
+  }
+}
+
+function takePendingMatch(
+  pending: PendingLink[],
+  title: string,
+  parentTaskId: number | null,
+): PendingLink | null {
+  const index = pending.findIndex(
+    (item) => item.title === title && item.parentTaskId === parentTaskId,
+  );
+  if (index < 0) {
+    return null;
+  }
+  const [match] = pending.splice(index, 1);
+  return match ?? null;
+}
+
+function fakeCreatedTask(
+  local: MutableTask,
+  projectId: number,
+  now: () => string,
+): VikunjaTask {
+  return {
+    id: -Math.floor(Math.random() * 1_000_000) - 1,
+    title: local.title,
+    description: descriptionFromLines(local.descriptionLines),
+    done: local.done ?? false,
+    project_id: projectId,
+    updated: now(),
+  };
 }
 
 function writeLedger(
@@ -534,6 +733,10 @@ function isDirtyTree(task: MutableTask): boolean {
   return task.children.some(isDirtyTree);
 }
 
+export function normalizeNotePath(path: string): string {
+  return path.trim().replace(/^\/+/, '');
+}
+
 function emptyCounts(): MappingSyncCounts {
   return {
     createdRemote: 0,
@@ -543,6 +746,7 @@ function emptyCounts(): MappingSyncCounts {
     conflictsResolved: 0,
     unchanged: 0,
     unresolvedRemovals: 0,
+    recoveredPendingLinks: 0,
   };
 }
 
@@ -555,6 +759,7 @@ function addCounts(a: MappingSyncCounts, b: MappingSyncCounts): MappingSyncCount
     conflictsResolved: a.conflictsResolved + b.conflictsResolved,
     unchanged: a.unchanged + b.unchanged,
     unresolvedRemovals: a.unresolvedRemovals + b.unresolvedRemovals,
+    recoveredPendingLinks: a.recoveredPendingLinks + b.recoveredPendingLinks,
   };
 }
 
@@ -562,7 +767,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function summarizeRun(totals: MappingSyncCounts, errorCount: number, mappingCount: number): string {
+function summarizeRun(
+  totals: MappingSyncCounts,
+  errorCount: number,
+  mappingCount: number,
+  dryRun: boolean,
+): string {
   const parts = [
     `${mappingCount} mapping${mappingCount === 1 ? '' : 's'}`,
     `+${totals.createdRemote} remote`,
@@ -572,8 +782,12 @@ function summarizeRun(totals: MappingSyncCounts, errorCount: number, mappingCoun
     `${totals.conflictsResolved} conflicts`,
     `${totals.unresolvedRemovals} unresolved`,
   ];
+  if (totals.recoveredPendingLinks > 0) {
+    parts.push(`${totals.recoveredPendingLinks} recovered`);
+  }
   if (errorCount > 0) {
     parts.push(`${errorCount} error${errorCount === 1 ? '' : 's'}`);
   }
-  return `Vikunja Sync: ${parts.join(', ')}`;
+  const prefix = dryRun ? 'Vikunja Sync dry-run' : 'Vikunja Sync';
+  return `${prefix}: ${parts.join(', ')}`;
 }

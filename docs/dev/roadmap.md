@@ -37,14 +37,15 @@ Outcome: a repository that can be developed against without ambiguity on v1 beha
 - Sync report / notices
 - Unit tests for classification, conflict policy, and nesting
 
-## Phase 4 — Hardening (next)
+## Phase 4 — Hardening (done)
 
-- Safer concurrent-run coalescing
-- Better error recovery when a create succeeds but note write fails
-- Optional dry-run / preview mode
+- Safer concurrent-run coalescing (single-flight + one follow-up; real sync wins over dry-run)
+- Better error recovery when a create succeeds but note write fails (`pendingLinks`)
+- Optional dry-run / preview mode (command + settings default)
+- Suppress file-change sync while the plugin writes notes
 - Documentation updates reflecting actual UI labels and commands
 
-## Phase 5 — Extended fields (post-v1)
+## Phase 5 — Extended fields (post-v1) (next)
 
 Candidates, in likely order:
 
