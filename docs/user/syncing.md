@@ -1,6 +1,6 @@
 # Syncing
 
-> **Status:** The plugin is not implemented yet. This page describes how sync is planned to behave.
+> **Status:** Sync behaviour below is the design contract. The **Sync now** command currently shows a placeholder notice until Phase 3.
 
 ## Overview
 

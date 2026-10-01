@@ -1,6 +1,6 @@
 # Settings
 
-> **Status:** The plugin is not implemented yet. This page describes the planned settings UI.
+> **Status:** Settings fields below are available in the plugin settings tab. Connection testing and live sync still land in later phases.
 
 ## Connection
 

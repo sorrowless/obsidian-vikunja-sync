@@ -2,7 +2,7 @@
 
 Phased plan for building the plugin against the design docs.
 
-## Phase 0 — Design contract (current)
+## Phase 0 — Design contract (done)
 
 Deliverables:
 
@@ -14,14 +14,14 @@ Deliverables:
 
 Outcome: a repository that can be developed against without ambiguity on v1 behaviour.
 
-## Phase 1 — Plugin skeleton
+## Phase 1 — Plugin skeleton (done)
 
-- Obsidian plugin manifest (`manifest.json`), `package.json`, TypeScript build (esbuild or equivalent)
-- Empty plugin entry that loads settings and registers a placeholder sync command
+- Obsidian plugin manifest (`manifest.json`), `package.json`, TypeScript build (esbuild)
+- Plugin entry that loads settings and registers a placeholder **Sync now** command
 - Settings tab UI for base URL, API token, mappings, conflict policy, and sync triggers
-- CI starts running `npm ci`, `npm run build`, and `npm test`
+- CI runs `npm ci`, `npm run build`, and `npm test` via `scripts/ci-check.sh`
 
-## Phase 2 — Read path and Vikunja client
+## Phase 2 — Read path and Vikunja client (next)
 
 - Vikunja API v1 client (auth, list projects, list/create/update tasks, relations)
 - Note parser for checklist trees, links, descriptions, done state

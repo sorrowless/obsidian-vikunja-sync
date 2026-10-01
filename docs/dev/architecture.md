@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the planned architecture for the Obsidian ↔ Vikunja sync plugin. Implementation has not started; this is the design contract.
+This document describes the architecture for the Obsidian ↔ Vikunja sync plugin. Phase 1 delivers the plugin skeleton and settings UI; sync engine pieces below are still planned.
 
 ## Goals
 

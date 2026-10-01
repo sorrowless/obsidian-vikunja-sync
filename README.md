@@ -2,7 +2,7 @@
 
 Bidirectional sync between Obsidian checklist tasks and [Vikunja](https://vikunja.io/) projects.
 
-> **Design phase.** This repository currently contains documentation, a README, and CI scaffolding. The Obsidian plugin itself is not implemented yet and cannot be installed.
+> **Status:** Phase 1 skeleton is in place (settings UI + placeholder **Sync now** command). Bidirectional sync is not implemented yet.
 
 ## What it will do
 
@@ -45,24 +45,35 @@ Synced Obsidian lines use a Markdown link to the Vikunja task page:
 - [Sync rules](docs/dev/sync-rules.md)
 - [Roadmap](docs/dev/roadmap.md)
 
-## Requirements (when the plugin exists)
-
-- Obsidian with community plugins enabled
-- A Vikunja instance and API token
-- Optional: [Obsidian Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) for richer task workflows in the vault
-
-## Local CI check
-
-Until `package.json` exists, CI only verifies that documentation layout is present:
+## Development
 
 ```bash
+npm install
+npm run dev      # watch build → main.js
+npm run build    # typecheck + production bundle
+npm test
 ./scripts/ci-check.sh
 ```
 
-When the plugin is added, the same script will run `npm ci`, `npm run build`, and `npm test`.
+### Manual install in Obsidian
 
-GitHub Actions workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+1. Build with `npm run build`.
+2. Copy `main.js`, `manifest.json` (and `styles.css` if present) into  
+   `Vault/.obsidian/plugins/obsidian-vikunja-sync/`.
+3. Enable **Vikunja Sync** under Community plugins.
+
+## Requirements
+
+- Obsidian with community plugins enabled
+- A Vikunja instance and API token (needed once sync is implemented)
+- Optional: [Obsidian Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) for richer task workflows in the vault
+
+## CI
+
+[`scripts/ci-check.sh`](scripts/ci-check.sh) validates the docs layout, then runs `npm ci`, `npm run build`, and `npm test`.
+
+GitHub Actions: [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## License
 
-License to be chosen when the first code release is prepared.
+Apache License 2.0. See [LICENSE](LICENSE).
