@@ -21,7 +21,7 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h2', { text: 'Vikunja Sync' });
     containerEl.createEl('p', {
-      text: 'Configure connection, note ↔ project mappings, conflict policy, and sync triggers. Use Test connection to verify the API token. Bidirectional sync ships in a later release; Sync now is still a placeholder.',
+      text: 'Configure connection, note ↔ project mappings, conflict policy, and sync triggers. Use Test connection to verify the API token. Sync now runs bidirectional sync for all mappings.',
     });
 
     this.renderConnectionSection(containerEl);

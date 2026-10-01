@@ -16,6 +16,7 @@ interface FlatTask {
   title: string;
   vikunjaTaskId: number | null;
   descriptionLines: string[];
+  descriptionLineIndices: number[];
 }
 
 interface FlatBullet {
@@ -54,6 +55,7 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
         title,
         vikunjaTaskId,
         descriptionLines: [],
+        descriptionLineIndices: [],
       });
       continue;
     }
@@ -61,7 +63,6 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
     const bulletMatch = line.match(BULLET_LINE);
     if (bulletMatch) {
       const body = (bulletMatch[3] ?? '').trim();
-      // Skip checklist-looking lines already handled; remaining are description bullets.
       if (/^\[.\]\s+/.test(body)) {
         continue;
       }
@@ -74,7 +75,21 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
   }
 
   assignDescriptions(tasks, bullets);
-  return buildTree(tasks);
+  const roots = buildTree(tasks);
+  assignEndLines(roots);
+  return roots;
+}
+
+export function indentWidth(indent: string): number {
+  let width = 0;
+  for (const ch of indent) {
+    if (ch === '\t') {
+      width += 4;
+    } else if (ch === ' ') {
+      width += 1;
+    }
+  }
+  return width;
 }
 
 function resolveTitleAndId(
@@ -103,22 +118,8 @@ function doneFromCheckbox(checkboxChar: string): boolean | null {
   return null;
 }
 
-function indentWidth(indent: string): number {
-  let width = 0;
-  for (const ch of indent) {
-    if (ch === '\t') {
-      width += 4;
-    } else if (ch === ' ') {
-      width += 1;
-    }
-    // Ignore blockquote markers `>` for width comparison of nested lists inside quotes.
-  }
-  return width;
-}
-
 function assignDescriptions(tasks: FlatTask[], bullets: FlatBullet[]): void {
   for (const bullet of bullets) {
-    // Deepest preceding task with strictly smaller indent owns the bullet.
     let owner: FlatTask | null = null;
     for (const task of tasks) {
       if (task.lineIndex >= bullet.lineIndex) {
@@ -128,7 +129,10 @@ function assignDescriptions(tasks: FlatTask[], bullets: FlatBullet[]): void {
         owner = task;
       }
     }
-    owner?.descriptionLines.push(bullet.text);
+    if (owner) {
+      owner.descriptionLines.push(bullet.text);
+      owner.descriptionLineIndices.push(bullet.lineIndex);
+    }
   }
 }
 
@@ -139,6 +143,7 @@ function buildTree(tasks: FlatTask[]): ParsedTaskNode[] {
   for (const task of tasks) {
     const node: ParsedTaskNode = {
       lineIndex: task.lineIndex,
+      endLineIndex: task.lineIndex,
       indent: task.indent,
       listMarker: task.listMarker,
       checkboxChar: task.checkboxChar,
@@ -146,6 +151,7 @@ function buildTree(tasks: FlatTask[]): ParsedTaskNode[] {
       title: task.title,
       vikunjaTaskId: task.vikunjaTaskId,
       descriptionLines: [...task.descriptionLines],
+      descriptionLineIndices: [...task.descriptionLineIndices],
       children: [],
     };
 
@@ -167,4 +173,18 @@ function buildTree(tasks: FlatTask[]): ParsedTaskNode[] {
   }
 
   return roots;
+}
+
+function assignEndLines(nodes: ParsedTaskNode[]): void {
+  for (const node of nodes) {
+    assignEndLines(node.children);
+    let end = node.lineIndex;
+    for (const idx of node.descriptionLineIndices) {
+      end = Math.max(end, idx);
+    }
+    for (const child of node.children) {
+      end = Math.max(end, child.endLineIndex);
+    }
+    node.endLineIndex = end;
+  }
 }

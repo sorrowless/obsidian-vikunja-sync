@@ -1,0 +1,116 @@
+export interface ContentSnapshot {
+  title: string;
+  description: string;
+  done: boolean;
+  parentTaskId: number | null;
+}
+
+export interface LedgerEntry {
+  taskId: number;
+  mappingKey: string;
+  title: string;
+  description: string;
+  done: boolean;
+  parentTaskId: number | null;
+  contentHash: string;
+  vikunjaUpdated: string;
+  lastSyncedAt: string;
+  /** Set when the task is missing on exactly one side. */
+  unresolved?: boolean;
+}
+
+export interface LedgerStore {
+  entries: Record<string, LedgerEntry>;
+}
+
+export function emptyLedger(): LedgerStore {
+  return { entries: {} };
+}
+
+export function mappingKey(notePath: string, projectId: number): string {
+  return `${notePath}::${projectId}`;
+}
+
+export function ledgerEntryKey(mappingKeyValue: string, taskId: number): string {
+  return `${mappingKeyValue}::${taskId}`;
+}
+
+export function descriptionFromLines(lines: string[]): string {
+  return lines.join('\n');
+}
+
+export function descriptionToLines(description: string): string[] {
+  if (!description) {
+    return [];
+  }
+  return description.split(/\r?\n/);
+}
+
+export function contentSnapshot(input: {
+  title: string;
+  description: string;
+  done: boolean;
+  parentTaskId: number | null;
+}): ContentSnapshot {
+  return {
+    title: input.title,
+    description: input.description,
+    done: input.done,
+    parentTaskId: input.parentTaskId,
+  };
+}
+
+/** Stable hash of synced fields for change detection. */
+export function contentHash(snapshot: ContentSnapshot): string {
+  const payload = [
+    snapshot.title,
+    snapshot.description,
+    snapshot.done ? '1' : '0',
+    snapshot.parentTaskId === null ? '' : String(snapshot.parentTaskId),
+  ].join('\0');
+  return fnv1aHex(payload);
+}
+
+export function snapshotFromLedger(entry: LedgerEntry): ContentSnapshot {
+  return {
+    title: entry.title,
+    description: entry.description,
+    done: entry.done,
+    parentTaskId: entry.parentTaskId,
+  };
+}
+
+export function makeLedgerEntry(input: {
+  taskId: number;
+  mappingKey: string;
+  title: string;
+  description: string;
+  done: boolean;
+  parentTaskId: number | null;
+  vikunjaUpdated: string;
+  lastSyncedAt?: string;
+  unresolved?: boolean;
+}): LedgerEntry {
+  const snapshot = contentSnapshot(input);
+  return {
+    taskId: input.taskId,
+    mappingKey: input.mappingKey,
+    title: snapshot.title,
+    description: snapshot.description,
+    done: snapshot.done,
+    parentTaskId: snapshot.parentTaskId,
+    contentHash: contentHash(snapshot),
+    vikunjaUpdated: input.vikunjaUpdated,
+    lastSyncedAt: input.lastSyncedAt ?? new Date().toISOString(),
+    unresolved: input.unresolved,
+  };
+}
+
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}

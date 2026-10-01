@@ -28,7 +28,7 @@ Outcome: a repository that can be developed against without ambiguity on v1 beha
 - Connection test action in settings
 - Unit tests for parser and client request shaping
 
-## Phase 3 — Sync engine (v1 scope) (next)
+## Phase 3 — Sync engine (v1 scope) (done)
 
 - Sync ledger in plugin data
 - Classification and mutation pipeline per [sync-rules.md](sync-rules.md)
@@ -37,7 +37,7 @@ Outcome: a repository that can be developed against without ambiguity on v1 beha
 - Sync report / notices
 - Unit tests for classification, conflict policy, and nesting
 
-## Phase 4 — Hardening
+## Phase 4 — Hardening (next)
 
 - Safer concurrent-run coalescing
 - Better error recovery when a create succeeds but note write fails

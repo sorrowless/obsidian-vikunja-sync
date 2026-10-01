@@ -1,6 +1,8 @@
 export interface ParsedTaskNode {
   /** 0-based line index of the checklist item in the source note. */
   lineIndex: number;
+  /** Inclusive last line index of this task block (descriptions + descendants). */
+  endLineIndex: number;
   /** Leading whitespace before the list marker. */
   indent: string;
   /** List marker as written (`-`, `*`, `1.`). */
@@ -18,6 +20,8 @@ export interface ParsedTaskNode {
   vikunjaTaskId: number | null;
   /** Indented non-checkbox bullets under this task (description). */
   descriptionLines: string[];
+  /** Source line indices for descriptionLines (parallel array). */
+  descriptionLineIndices: number[];
   /** Nested checklist children. */
   children: ParsedTaskNode[];
 }

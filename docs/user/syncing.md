@@ -1,6 +1,6 @@
 # Syncing
 
-> **Status:** Sync behaviour below is the design contract. The **Sync now** command currently shows a placeholder notice until Phase 3.
+> **Status:** Sync behaviour below is implemented for v1 fields (title, description, done, nesting). Use **Sync now** or enable automatic triggers in settings.
 
 ## Overview
 

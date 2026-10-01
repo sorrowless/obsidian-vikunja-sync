@@ -1,6 +1,6 @@
 # Settings
 
-> **Status:** Settings fields and **Test connection** are available. Live bidirectional sync still lands in Phase 3.
+> **Status:** Settings fields and **Test connection** are available. Automatic sync triggers and conflict policy are used by the sync engine.
 
 ## Connection
 

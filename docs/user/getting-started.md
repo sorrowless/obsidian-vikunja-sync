@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status:** The plugin loads in Obsidian with settings and **Test connection**. Bidirectional sync is not implemented yet.
+> **Status:** The plugin syncs mapped notes with Vikunja projects. Configure settings, run **Test connection**, then **Sync now**.
 
 This plugin syncs checklist tasks between Obsidian notes and projects on a Vikunja instance (including self-hosted).
 
@@ -21,7 +21,7 @@ This plugin syncs checklist tasks between Obsidian notes and projects on a Vikun
 4. Map at least one Obsidian note path to one Vikunja project.
 5. Choose a conflict policy (default: Prefer Obsidian).
 6. Enable the sync triggers you want (startup, interval, file change). Manual sync remains available as a command.
-7. Run **Sync now** once and confirm tasks appear with Vikunja links.
+7. Run **Test connection**, then **Sync now**, and confirm tasks appear with Vikunja links.
 
 ## What gets synced in the first version
 
