@@ -77,15 +77,27 @@ export function ledgerEntryKey(mappingKeyValue: string, taskId: number): string 
   return `${mappingKeyValue}::${taskId}`;
 }
 
+import { htmlToPlainText } from './html-to-text';
+
 export function descriptionFromLines(lines: string[]): string {
   return lines.join('\n');
 }
 
+/**
+ * Split a Vikunja/Obsidian description into plain-text bullet lines.
+ * HTML from Vikunja’s editor is converted to plain text first.
+ */
 export function descriptionToLines(description: string): string[] {
-  if (!description) {
+  const plain = htmlToPlainText(description ?? '');
+  if (!plain) {
     return [];
   }
-  return description.split(/\r?\n/);
+  return plain.split('\n').filter((line) => line.length > 0);
+}
+
+/** Canonical plain-text form used for hashing and ledger storage. */
+export function normalizeDescription(description: string): string {
+  return descriptionFromLines(descriptionToLines(description));
 }
 
 export function contentSnapshot(input: {

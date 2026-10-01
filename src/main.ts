@@ -122,6 +122,19 @@ export default class VikunjaSyncPlugin extends Plugin {
     await this.saveData(data);
   }
 
+  /**
+   * Forget sync history (ledger + pending links). Connection settings and
+   * mappings are kept. After this, the next sync treats Vikunja tasks as new
+   * again instead of “unresolved removals”.
+   */
+  async clearSyncState(): Promise<number> {
+    const cleared = Object.keys(this.ledger.entries).length + this.pendingLinks.length;
+    this.ledger = emptyLedger();
+    this.pendingLinks = [];
+    await this.savePluginData();
+    return cleared;
+  }
+
   restartScheduler(): void {
     this.clearIntervalTimer();
     if (!this.settings.syncIntervalEnabled) {

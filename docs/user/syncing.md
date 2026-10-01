@@ -44,7 +44,9 @@ If a task was synced before and then disappears on only one side, the plugin wil
 - delete it on the other side, or
 - recreate the missing copy.
 
-The remaining side is left alone, and the sync report lists the case as unresolved. Automatic delete policies may be added later.
+The remaining side is left alone, and the sync report lists the case as unresolved.
+
+To start over after wiping synced lines from a note: open settings → **Clear sync state**, then run **Sync now**. Vikunja tasks will be imported again as new local tasks.
 
 ## When sync runs
 

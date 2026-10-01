@@ -28,7 +28,7 @@ Description lines are indented bullets **without** checkboxes, directly under th
     - Link to the changelog
 ```
 
-Those bullets sync to the Vikunja task description (joined with newlines when sent to Vikunja).
+Those bullets sync to the Vikunja task description (joined with newlines when sent to Vikunja). Descriptions coming from Vikunja may be HTML in the API; the plugin converts them to plain text before writing into the note.
 
 ## Nested subtasks
 

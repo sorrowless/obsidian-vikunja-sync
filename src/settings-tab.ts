@@ -32,6 +32,7 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
     this.renderMappingsSection(containerEl);
     this.renderConflictSection(containerEl);
     this.renderTriggersSection(containerEl);
+    this.renderMaintenanceSection(containerEl);
   }
 
   private renderConnectionSection(containerEl: HTMLElement): void {
@@ -280,6 +281,42 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
           this.plugin.settings.dryRunDefault = value;
           await this.plugin.saveSettings();
         }),
+      );
+  }
+
+  private renderMaintenanceSection(containerEl: HTMLElement): void {
+    containerEl.createEl('h3', { text: 'Maintenance' });
+
+    const entryCount = Object.keys(this.plugin.ledger.entries).length;
+    const pendingCount = this.plugin.pendingLinks.length;
+
+    new Setting(containerEl)
+      .setName('Clear sync state')
+      .setDesc(
+        `Forget the sync ledger and pending links (${entryCount} ledger entr${entryCount === 1 ? 'y' : 'ies'}, ${pendingCount} pending). Connection settings and mappings stay. Use this after wiping synced tasks from a note so the next sync imports Vikunja tasks again instead of reporting unresolved removals.`,
+      )
+      .addButton((button) =>
+        button
+          .setButtonText('Clear sync state')
+          .setWarning()
+          .onClick(async () => {
+            const confirmed = window.confirm(
+              'Clear Vikunja Sync state?\n\n' +
+                'This deletes the local sync ledger and pending links. ' +
+                'Mapped notes and Vikunja tasks are not deleted. ' +
+                'The next sync will treat remote tasks as new imports.',
+            );
+            if (!confirmed) {
+              return;
+            }
+            const cleared = await this.plugin.clearSyncState();
+            new Notice(
+              cleared > 0
+                ? `Vikunja Sync: cleared sync state (${cleared} record${cleared === 1 ? '' : 's'}).`
+                : 'Vikunja Sync: sync state was already empty.',
+            );
+            this.display();
+          }),
       );
   }
 }

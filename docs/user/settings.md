@@ -47,3 +47,9 @@ Commands:
 
 - **Sync now** — run sync (or dry-run if the setting above is on)
 - **Preview sync (dry run)** — always preview without writing
+
+## Maintenance
+
+| Setting | Description |
+| --- | --- |
+| Clear sync state | Deletes the local sync ledger and pending links. Settings and mappings are kept. After clearing, the next sync imports Vikunja tasks into empty notes again instead of listing them as unresolved removals. |

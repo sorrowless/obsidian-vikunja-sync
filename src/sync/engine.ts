@@ -13,6 +13,7 @@ import {
   ledgerEntryKey,
   makeLedgerEntry,
   mappingKey,
+  normalizeDescription,
   type LedgerEntry,
   type LedgerStore,
   type PendingLink,
@@ -603,7 +604,7 @@ function writeLedger(
     taskId: task.id,
     mappingKey: key,
     title: task.title,
-    description: task.description,
+    description: normalizeDescription(task.description),
     done: task.done,
     parentTaskId,
     vikunjaUpdated: task.updated || now(),
@@ -628,7 +629,7 @@ function localSnapshot(
 function remoteSnapshot(task: VikunjaTask, parentTaskId: number | null) {
   return contentSnapshot({
     title: task.title,
-    description: task.description ?? '',
+    description: normalizeDescription(task.description ?? ''),
     done: task.done,
     parentTaskId,
   });
