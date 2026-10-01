@@ -59,7 +59,33 @@ export function createEmptyMapping(): NoteProjectMapping {
   };
 }
 
-/** Normalize a vault-relative note path from settings. */
+/** Normalize a vault-relative note path from settings. Spaces in names are kept. */
 export function normalizeMappingPath(path: string): string {
-  return path.trim().replace(/^\/+/, '');
+  // NFC avoids macOS NFD filename mismatches with Cyrillic typed in settings.
+  return path.trim().replace(/^\/+/, '').normalize('NFC');
+}
+
+export function isMappingComplete(mapping: NoteProjectMapping): boolean {
+  return normalizeMappingPath(mapping.notePath).length > 0 && mapping.projectId > 0;
+}
+
+/** True when the row is still the blank draft created by “Add mapping”. */
+export function isMappingBlank(mapping: NoteProjectMapping): boolean {
+  return normalizeMappingPath(mapping.notePath).length === 0 && !(mapping.projectId > 0);
+}
+
+/**
+ * Normalize mapping fields in place.
+ * Important: do not replace mapping objects or the mappings array — the settings
+ * tab keeps closures/indexes into these objects across keystrokes.
+ */
+export function prepareMappingsForSave(mappings: NoteProjectMapping[]): void {
+  for (const mapping of mappings) {
+    mapping.notePath = normalizeMappingPath(mapping.notePath);
+    if (!Number.isFinite(mapping.projectId) || mapping.projectId < 0) {
+      mapping.projectId = 0;
+    } else {
+      mapping.projectId = Math.floor(mapping.projectId);
+    }
+  }
 }

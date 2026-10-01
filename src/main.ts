@@ -1,15 +1,20 @@
-import { Notice, Plugin, TFile } from 'obsidian';
+import { Notice, Plugin, TFile, requestUrl } from 'obsidian';
 import { VikunjaSyncSettingTab } from './settings-tab';
 import {
   DEFAULT_SETTINGS,
   normalizeMappingPath,
+  prepareMappingsForSave,
   syncIntervalToMilliseconds,
   type PluginSettings,
 } from './settings';
 import { SyncCoordinator } from './sync/coordinator';
 import { syncAllMappings } from './sync/engine';
 import { emptyLedger, type LedgerStore, type PendingLink } from './sync/ledger';
+import { collectSyncErrors, formatSyncNotice } from './sync/report';
+import { SyncReportModal } from './sync/report-modal';
+import { pathsReferToSameNote, resolveMarkdownFile } from './vault/resolve-note';
 import { VikunjaClient } from './vikunja/client';
+import { createObsidianRequestTransport } from './vikunja/http';
 import { VikunjaApiError } from './vikunja/types';
 
 interface PluginData {
@@ -100,10 +105,10 @@ export default class VikunjaSyncPlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> {
-    this.settings.mappings = this.settings.mappings.map((mapping) => ({
-      ...mapping,
-      notePath: normalizeMappingPath(mapping.notePath),
-    }));
+    // Normalize in place — never replace mapping objects or the mappings array.
+    // The settings tab keeps indexes/closures over those references; replacing
+    // them drops subsequent edits (project id / path with spaces looked “unsaved”).
+    prepareMappingsForSave(this.settings.mappings);
     await this.savePluginData();
     this.restartScheduler();
   }
@@ -135,6 +140,8 @@ export default class VikunjaSyncPlugin extends Plugin {
     return new VikunjaClient({
       baseUrl: this.settings.vikunjaBaseUrl,
       token: this.settings.vikunjaApiToken,
+      // Obsidian's requestUrl bypasses CORS; plain fetch fails against most self-hosted Vikunja hosts.
+      transport: createObsidianRequestTransport(requestUrl),
     });
   }
 
@@ -191,11 +198,11 @@ export default class VikunjaSyncPlugin extends Plugin {
           client,
           dryRun,
           readNote: async (path) => {
-            const file = this.resolveMarkdownFile(path);
+            const file = resolveMarkdownFile(this.app, path);
             return this.app.vault.read(file);
           },
           writeNote: async (path, content) => {
-            const file = this.resolveMarkdownFile(path);
+            const file = resolveMarkdownFile(this.app, path);
             this.writingPaths.add(file.path);
             try {
               await this.app.vault.modify(file, content);
@@ -213,25 +220,22 @@ export default class VikunjaSyncPlugin extends Plugin {
         await this.savePluginData();
       }
 
-      new Notice(result.message);
-      for (const mapping of result.mappings) {
-        for (const error of mapping.errors) {
-          console.error(`Vikunja Sync [${mapping.notePath}]: ${error}`);
-        }
+      const errors = collectSyncErrors(result);
+      const noticeText = formatSyncNotice(result);
+      new Notice(noticeText, errors.length > 0 ? 15_000 : 8_000);
+
+      for (const line of errors) {
+        console.error(`Vikunja Sync: ${line}`);
+      }
+
+      // Dry-run always opens the report; real sync opens it when something failed.
+      if (dryRun || errors.length > 0) {
+        new SyncReportModal(this.app, result).open();
       }
     } catch (error) {
-      new Notice(`Vikunja Sync failed: ${formatConnectionError(error)}`);
+      new Notice(`Vikunja Sync failed: ${formatConnectionError(error)}`, 15_000);
       console.error('Vikunja Sync failed', error);
     }
-  }
-
-  private resolveMarkdownFile(path: string): TFile {
-    const normalized = normalizeMappingPath(path);
-    const file = this.app.vault.getAbstractFileByPath(normalized);
-    if (!(file instanceof TFile)) {
-      throw new Error(`Note not found: ${normalized}`);
-    }
-    return file;
   }
 
   private onMappedFileModified(path: string): void {
@@ -241,8 +245,8 @@ export default class VikunjaSyncPlugin extends Plugin {
     if (this.writingPaths.has(path) || this.coordinator.isRunning) {
       return;
     }
-    const mapped = this.settings.mappings.some(
-      (mapping) => normalizeMappingPath(mapping.notePath) === path,
+    const mapped = this.settings.mappings.some((mapping) =>
+      pathsReferToSameNote(mapping.notePath, path),
     );
     if (!mapped) {
       return;

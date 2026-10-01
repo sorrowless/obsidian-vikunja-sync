@@ -2,10 +2,14 @@ import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type VikunjaSyncPlugin from './main';
 import {
   createEmptyMapping,
+  isMappingBlank,
+  isMappingComplete,
   normalizeSyncIntervalValue,
   type ConflictPolicy,
   type SyncIntervalUnit,
 } from './settings';
+import { NoteSuggestModal } from './vault/note-suggest-modal';
+import { resolveMarkdownFile } from './vault/resolve-note';
 
 export class VikunjaSyncSettingTab extends PluginSettingTab {
   plugin: VikunjaSyncPlugin;
@@ -86,21 +90,39 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
     containerEl.createEl('h3', { text: 'Note ↔ project mappings' });
     containerEl.createEl('p', {
       cls: 'setting-item-description',
-      text: 'Each mapping pairs one vault note path with one Vikunja project id.',
+      text: 'Each mapping pairs one vault note path with one Vikunja project id. Paths are relative to the vault root; spaces in file names are fine (example: Folder/My tasks.md).',
     });
 
     this.plugin.settings.mappings.forEach((mapping, index) => {
       new Setting(containerEl)
         .setName(`Mapping ${index + 1}`)
-        .setDesc('Note path relative to the vault root')
+        .setDesc('Note path relative to the vault root — prefer Browse to copy Obsidian’s exact path')
         .addText((text) =>
           text
-            .setPlaceholder('Tasks/Work.md')
+            .setPlaceholder('Folder/My tasks.md')
             .setValue(mapping.notePath)
             .onChange(async (value) => {
-              mapping.notePath = value.trim();
+              const current = this.plugin.settings.mappings[index];
+              if (!current) {
+                return;
+              }
+              // Keep spaces inside the name; ends are trimmed on save.
+              current.notePath = value;
               await this.plugin.saveSettings();
             }),
+        )
+        .addButton((button) =>
+          button.setButtonText('Browse').onClick(() => {
+            new NoteSuggestModal(this.app, (file) => {
+              const current = this.plugin.settings.mappings[index];
+              if (!current) {
+                return;
+              }
+              // Store the exact vault path Obsidian uses (correct Unicode form).
+              current.notePath = file.path;
+              void this.plugin.saveSettings().then(() => this.display());
+            }).open();
+          }),
         )
         .addText((text) => {
           text.inputEl.type = 'number';
@@ -109,8 +131,12 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
             .setPlaceholder('Project id')
             .setValue(mapping.projectId > 0 ? String(mapping.projectId) : '')
             .onChange(async (value) => {
+              const current = this.plugin.settings.mappings[index];
+              if (!current) {
+                return;
+              }
               const parsed = Number.parseInt(value, 10);
-              mapping.projectId = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+              current.projectId = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
               await this.plugin.saveSettings();
             });
         })
@@ -124,6 +150,28 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
               this.display();
             });
         });
+
+      if (!isMappingBlank(mapping) && !isMappingComplete(mapping)) {
+        containerEl.createEl('p', {
+          cls: 'setting-item-description',
+          text: `Mapping ${index + 1} is incomplete — both note path and project id are required before sync.`,
+        });
+      } else if (isMappingComplete(mapping)) {
+        try {
+          const file = resolveMarkdownFile(this.app, mapping.notePath);
+          if (file.path !== mapping.notePath) {
+            containerEl.createEl('p', {
+              cls: 'setting-item-description',
+              text: `Resolved to vault path “${file.path}”. Click Browse once to store that exact path.`,
+            });
+          }
+        } catch {
+          containerEl.createEl('p', {
+            cls: 'setting-item-description',
+            text: `Mapping ${index + 1}: note not found in the vault. Use Browse to select it.`,
+          });
+        }
+      }
     });
 
     new Setting(containerEl).addButton((button) =>

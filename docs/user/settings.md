@@ -13,10 +13,7 @@ A **Test connection** button verifies that the saved URL and token can list proj
 
 ## Note ↔ project mappings
 
-Each mapping pairs:
-
-- An Obsidian note path inside your vault
-- A Vikunja **project** id
+Each mapping pairs one Obsidian note path with one Vikunja **project** id. Prefer the **Browse** button so the plugin stores Obsidian’s exact vault path (important for names with spaces or Cyrillic characters). You can still type a path manually; example: `Folder/My tasks.md`.
 
 One note maps to one project. Tasks in that note sync with that project only.
 

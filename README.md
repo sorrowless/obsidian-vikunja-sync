@@ -82,6 +82,8 @@ A ribbon **sync** icon also starts **Sync now**.
 
 Automatic triggers (startup / interval / file change) always perform a real sync.
 
+After a dry-run (or any sync with errors), a report modal lists per-mapping counts and the full error text — not only “1 error” in the summary notice.
+
 ## Requirements
 
 - Obsidian with community plugins enabled

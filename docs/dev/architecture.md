@@ -71,6 +71,8 @@ Required operations:
 
 Authentication header: `Authorization: Bearer <token>`.
 
+In the Obsidian plugin, HTTP calls use Obsidian’s `requestUrl` (not browser `fetch`) so self-hosted Vikunja instances are not blocked by CORS.
+
 Task identity in notes uses the frontend URL pattern `{baseUrl}/tasks/{id}`.
 
 ### Note parser / writer

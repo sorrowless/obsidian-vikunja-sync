@@ -98,12 +98,21 @@ export async function syncAllMappings(
     const notePath = normalizeNotePath(mapping.notePath);
     const projectId = mapping.projectId;
 
+    if (!notePath && !(projectId > 0)) {
+      // Blank draft row from “Add mapping” — ignore.
+      continue;
+    }
+
     if (!notePath || projectId <= 0) {
       results.push({
         notePath,
         projectId,
         counts: emptyCounts(),
-        errors: ['Mapping is incomplete (note path and project id are required)'],
+        errors: [
+          !notePath && projectId > 0
+            ? `Mapping is incomplete: note path is missing (project id ${projectId})`
+            : `Mapping is incomplete: project id is missing (note path "${notePath}")`,
+        ],
         unresolvedTaskIds: [],
         pendingLinks: [],
       });

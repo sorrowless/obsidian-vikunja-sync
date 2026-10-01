@@ -1,4 +1,5 @@
 import { apiRoot, normalizeBaseUrl } from './urls';
+import { createFetchTransport, type HttpTransport } from './http';
 import {
   VikunjaApiError,
   type CreateRelationInput,
@@ -12,6 +13,12 @@ import {
 export interface VikunjaClientOptions {
   baseUrl: string;
   token: string;
+  /**
+   * HTTP transport. Prefer Obsidian `requestUrl` in the plugin (CORS-safe).
+   * Defaults to a fetch-based transport for tests/Node.
+   */
+  transport?: HttpTransport;
+  /** @deprecated Use `transport` instead. Kept for older tests. */
   fetchImpl?: typeof fetch;
 }
 
@@ -20,13 +27,15 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 export class VikunjaClient {
   readonly baseUrl: string;
   private readonly token: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly transport: HttpTransport;
   private readonly root: string;
 
   constructor(options: VikunjaClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.token = options.token.trim();
-    this.fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
+    this.transport =
+      options.transport ??
+      createFetchTransport(options.fetchImpl ?? fetch.bind(globalThis));
     this.root = apiRoot(this.baseUrl);
 
     if (!this.baseUrl) {
@@ -154,14 +163,10 @@ export class VikunjaClient {
     path: string,
     query?: Record<string, string | number | undefined>,
   ): Promise<{ data: T[]; totalPages: number }> {
-    const url = this.buildUrl(path, query);
-    const response = await this.fetchImpl(url, {
-      method: 'GET',
-      headers: this.headers(),
-    });
+    const response = await this.send('GET', this.buildUrl(path, query));
+    const body = parseBody(response.text);
 
-    const body = await readBody(response);
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new VikunjaApiError(
         messageFromBody(body, `Vikunja request failed (${response.status})`),
         response.status,
@@ -169,7 +174,7 @@ export class VikunjaClient {
       );
     }
 
-    const totalPagesHeader = response.headers.get('x-pagination-total-pages');
+    const totalPagesHeader = response.headers['x-pagination-total-pages'];
     const totalPages = totalPagesHeader ? Number.parseInt(totalPagesHeader, 10) : 1;
 
     if (!Array.isArray(body)) {
@@ -182,19 +187,15 @@ export class VikunjaClient {
     };
   }
 
-  private async request<T>(
-    method: HttpMethod,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
-    const response = await this.fetchImpl(this.buildUrl(path), {
+  private async request<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+    const response = await this.send(
       method,
-      headers: this.headers(body !== undefined),
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+      this.buildUrl(path),
+      body === undefined ? undefined : JSON.stringify(body),
+    );
+    const parsed = parseBody(response.text);
 
-    const parsed = await readBody(response);
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       throw new VikunjaApiError(
         messageFromBody(parsed, `Vikunja request failed (${response.status})`),
         response.status,
@@ -203,6 +204,24 @@ export class VikunjaClient {
     }
 
     return parsed as T;
+  }
+
+  private async send(method: HttpMethod, url: string, body?: string) {
+    try {
+      return await this.transport({
+        url,
+        method,
+        headers: this.headers(body !== undefined),
+        body,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new VikunjaApiError(
+        `Network error talking to Vikunja (${method} ${url}): ${detail}`,
+        0,
+        detail,
+      );
+    }
   }
 
   private headers(jsonBody = false): Record<string, string> {
@@ -264,8 +283,7 @@ function normalizeTask(raw: Record<string, unknown>): VikunjaTask | null {
   };
 }
 
-async function readBody(response: Response): Promise<unknown> {
-  const text = await response.text();
+function parseBody(text: string): unknown {
   if (!text) {
     return null;
   }
