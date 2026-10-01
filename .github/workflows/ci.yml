@@ -19,4 +19,4 @@ jobs:
           cache: npm
 
       - name: Run CI check
-        run: ./scripts/ci-check.sh
+        run: make ci

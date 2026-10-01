@@ -48,19 +48,28 @@ Synced Obsidian lines use a Markdown link to the Vikunja task page:
 ## Development
 
 ```bash
-npm install
-npm run dev      # watch build → main.js
-npm run build    # typecheck + production bundle
-npm test
-./scripts/ci-check.sh
+make install          # npm ci
+make build            # typecheck + production bundle → main.js
+make test
+make ci               # docs check + install + build + test
+make release          # build + zip under dist/
+make release bump=patch   # bump version, then release zip
+make install-vault VAULT="$HOME/path/to/vault"
+make clean
 ```
+
+Watch mode: `make dev`.
 
 ### Manual install in Obsidian
 
-1. Build with `npm run build`.
-2. Copy `main.js`, `manifest.json` (and `styles.css` if present) into  
-   `Vault/.obsidian/plugins/obsidian-vikunja-sync/`.
-3. Enable **Vikunja Sync** under Community plugins.
+```bash
+make install-vault VAULT="/path/to/your/vault"
+```
+
+Or copy `main.js`, `manifest.json`, and `styles.css` into  
+`Vault/.obsidian/plugins/obsidian-vikunja-sync/` after `make build`.
+
+Then enable **Vikunja Sync** under Community plugins.
 
 ## Requirements
 
@@ -70,7 +79,7 @@ npm test
 
 ## CI
 
-[`scripts/ci-check.sh`](scripts/ci-check.sh) validates the docs layout, then runs `npm ci`, `npm run build`, and `npm test`.
+`make ci` validates the docs layout, then runs `make install`, `make build`, and `make test` (via [`scripts/ci-check.sh`](scripts/ci-check.sh)).
 
 GitHub Actions: [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 

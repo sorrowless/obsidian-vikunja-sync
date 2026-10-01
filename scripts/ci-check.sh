@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Minimal CI gate for this repository.
 # - Always validates README + docs layout
-# - When package.json exists, also runs install / build / test
+# - When package.json exists, also runs make install / build / test
 
 set -euo pipefail
 
@@ -36,12 +36,13 @@ if [[ ! -f package.json ]]; then
   exit 0
 fi
 
-echo "ci-check: package.json present — running npm ci, build, and test"
+echo "ci-check: package.json present — running make install, build, and test"
 
+command -v make >/dev/null 2>&1 || fail "make is required when package.json exists"
 command -v npm >/dev/null 2>&1 || fail "npm is required when package.json exists"
 
-npm ci
-npm run build
-npm test
+make install
+make build
+make test
 
 echo "ci-check: OK"

@@ -1,7 +1,8 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build / release artifacts
+dist/
 main.js
 main.js.map
 *.js.map
