@@ -21,14 +21,14 @@ Outcome: a repository that can be developed against without ambiguity on v1 beha
 - Settings tab UI for base URL, API token, mappings, conflict policy, and sync triggers
 - CI runs `npm ci`, `npm run build`, and `npm test` via `scripts/ci-check.sh`
 
-## Phase 2 — Read path and Vikunja client (next)
+## Phase 2 — Read path and Vikunja client (done)
 
 - Vikunja API v1 client (auth, list projects, list/create/update tasks, relations)
 - Note parser for checklist trees, links, descriptions, done state
 - Connection test action in settings
 - Unit tests for parser and client request shaping
 
-## Phase 3 — Sync engine (v1 scope)
+## Phase 3 — Sync engine (v1 scope) (next)
 
 - Sync ledger in plugin data
 - Classification and mutation pipeline per [sync-rules.md](sync-rules.md)

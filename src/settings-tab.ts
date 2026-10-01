@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type VikunjaSyncPlugin from './main';
 import {
   createEmptyMapping,
@@ -21,7 +21,7 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
 
     containerEl.createEl('h2', { text: 'Vikunja Sync' });
     containerEl.createEl('p', {
-      text: 'Configure connection, note ↔ project mappings, conflict policy, and sync triggers. Bidirectional sync logic ships in a later release; Sync now currently shows a placeholder notice.',
+      text: 'Configure connection, note ↔ project mappings, conflict policy, and sync triggers. Use Test connection to verify the API token. Bidirectional sync ships in a later release; Sync now is still a placeholder.',
     });
 
     this.renderConnectionSection(containerEl);
@@ -59,6 +59,27 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
       });
+
+    new Setting(containerEl)
+      .setName('Test connection')
+      .setDesc('Calls the Vikunja API to list projects with the saved URL and token')
+      .addButton((button) =>
+        button.setButtonText('Test connection').onClick(async () => {
+          button.setDisabled(true);
+          try {
+            const result = await this.plugin.testVikunjaConnection();
+            if (result.ok) {
+              new Notice(
+                `Vikunja Sync: connection OK (${result.projectCount} project${result.projectCount === 1 ? '' : 's'}).`,
+              );
+            } else {
+              new Notice(`Vikunja Sync: connection failed — ${result.message}`);
+            }
+          } finally {
+            button.setDisabled(false);
+          }
+        }),
+      );
   }
 
   private renderMappingsSection(containerEl: HTMLElement): void {

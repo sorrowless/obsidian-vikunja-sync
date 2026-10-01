@@ -1,0 +1,290 @@
+import { apiRoot, normalizeBaseUrl } from './urls';
+import {
+  VikunjaApiError,
+  type CreateRelationInput,
+  type CreateTaskInput,
+  type UpdateTaskInput,
+  type VikunjaProject,
+  type VikunjaRelationKind,
+  type VikunjaTask,
+} from './types';
+
+export interface VikunjaClientOptions {
+  baseUrl: string;
+  token: string;
+  fetchImpl?: typeof fetch;
+}
+
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+
+export class VikunjaClient {
+  readonly baseUrl: string;
+  private readonly token: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly root: string;
+
+  constructor(options: VikunjaClientOptions) {
+    this.baseUrl = normalizeBaseUrl(options.baseUrl);
+    this.token = options.token.trim();
+    this.fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
+    this.root = apiRoot(this.baseUrl);
+
+    if (!this.baseUrl) {
+      throw new Error('Vikunja base URL is required');
+    }
+    if (!this.token) {
+      throw new Error('Vikunja API token is required');
+    }
+  }
+
+  /** Lightweight connectivity check used by settings. */
+  async testConnection(): Promise<{ projectCount: number }> {
+    const projects = await this.listProjects();
+    return { projectCount: projects.length };
+  }
+
+  async listProjects(): Promise<VikunjaProject[]> {
+    const raw = await this.requestAllPages<Record<string, unknown>>('/projects');
+    return raw.map(normalizeProject).filter((project): project is VikunjaProject => project !== null);
+  }
+
+  async listProjectTasks(projectId: number): Promise<VikunjaTask[]> {
+    const raw = await this.requestAllPages<Record<string, unknown>>(
+      `/projects/${projectId}/tasks`,
+      { expand: 'subtasks' },
+    );
+    return raw.map(normalizeTask).filter((task): task is VikunjaTask => task !== null);
+  }
+
+  async getTask(taskId: number): Promise<VikunjaTask> {
+    const raw = await this.request<Record<string, unknown>>('GET', `/tasks/${taskId}`);
+    const task = normalizeTask(raw);
+    if (!task) {
+      throw new VikunjaApiError('Invalid task payload', 500, raw);
+    }
+    return task;
+  }
+
+  async createTask(projectId: number, input: CreateTaskInput): Promise<VikunjaTask> {
+    const raw = await this.request<Record<string, unknown>>('PUT', `/projects/${projectId}/tasks`, {
+      title: input.title,
+      description: input.description ?? '',
+      done: input.done ?? false,
+    });
+    const task = normalizeTask(raw);
+    if (!task) {
+      throw new VikunjaApiError('Invalid create-task payload', 500, raw);
+    }
+    return task;
+  }
+
+  async updateTask(taskId: number, input: UpdateTaskInput): Promise<VikunjaTask> {
+    const body: Record<string, unknown> = {};
+    if (input.title !== undefined) {
+      body.title = input.title;
+    }
+    if (input.description !== undefined) {
+      body.description = input.description;
+    }
+    if (input.done !== undefined) {
+      body.done = input.done;
+    }
+
+    const raw = await this.request<Record<string, unknown>>('POST', `/tasks/${taskId}`, body);
+    const task = normalizeTask(raw);
+    if (!task) {
+      throw new VikunjaApiError('Invalid update-task payload', 500, raw);
+    }
+    return task;
+  }
+
+  async createRelation(taskId: number, input: CreateRelationInput): Promise<void> {
+    await this.request('PUT', `/tasks/${taskId}/relations`, {
+      other_task_id: input.otherTaskId,
+      relation_kind: input.relationKind,
+    });
+  }
+
+  async deleteRelation(
+    taskId: number,
+    otherTaskId: number,
+    relationKind: VikunjaRelationKind,
+  ): Promise<void> {
+    await this.request(
+      'DELETE',
+      `/tasks/${taskId}/relations/${otherTaskId}/${encodeURIComponent(relationKind)}`,
+    );
+  }
+
+  /** Exposed for unit tests — builds absolute request URL. */
+  buildUrl(path: string, query?: Record<string, string | number | undefined>): string {
+    const url = new URL(`${this.root}${path.startsWith('/') ? path : `/${path}`}`);
+    if (query) {
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined) {
+          url.searchParams.set(key, String(value));
+        }
+      }
+    }
+    return url.toString();
+  }
+
+  private async requestAllPages<T>(
+    path: string,
+    query?: Record<string, string | number | undefined>,
+  ): Promise<T[]> {
+    const results: T[] = [];
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const { data, totalPages: headerPages } = await this.requestPage<T>(path, {
+        ...query,
+        page,
+      });
+      results.push(...data);
+      totalPages = headerPages;
+      page += 1;
+    }
+
+    return results;
+  }
+
+  private async requestPage<T>(
+    path: string,
+    query?: Record<string, string | number | undefined>,
+  ): Promise<{ data: T[]; totalPages: number }> {
+    const url = this.buildUrl(path, query);
+    const response = await this.fetchImpl(url, {
+      method: 'GET',
+      headers: this.headers(),
+    });
+
+    const body = await readBody(response);
+    if (!response.ok) {
+      throw new VikunjaApiError(
+        messageFromBody(body, `Vikunja request failed (${response.status})`),
+        response.status,
+        body,
+      );
+    }
+
+    const totalPagesHeader = response.headers.get('x-pagination-total-pages');
+    const totalPages = totalPagesHeader ? Number.parseInt(totalPagesHeader, 10) : 1;
+
+    if (!Array.isArray(body)) {
+      throw new VikunjaApiError('Expected a JSON array from Vikunja', response.status, body);
+    }
+
+    return {
+      data: body as T[],
+      totalPages: Number.isFinite(totalPages) && totalPages > 0 ? totalPages : 1,
+    };
+  }
+
+  private async request<T>(
+    method: HttpMethod,
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    const response = await this.fetchImpl(this.buildUrl(path), {
+      method,
+      headers: this.headers(body !== undefined),
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    const parsed = await readBody(response);
+    if (!response.ok) {
+      throw new VikunjaApiError(
+        messageFromBody(parsed, `Vikunja request failed (${response.status})`),
+        response.status,
+        parsed,
+      );
+    }
+
+    return parsed as T;
+  }
+
+  private headers(jsonBody = false): Record<string, string> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+      Accept: 'application/json',
+    };
+    if (jsonBody) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return headers;
+  }
+}
+
+function normalizeProject(raw: Record<string, unknown>): VikunjaProject | null {
+  const id = Number(raw.id);
+  if (!Number.isFinite(id)) {
+    return null;
+  }
+  return {
+    id,
+    title: typeof raw.title === 'string' ? raw.title : '',
+  };
+}
+
+function normalizeTask(raw: Record<string, unknown>): VikunjaTask | null {
+  const id = Number(raw.id);
+  const projectId = Number(raw.project_id);
+  if (!Number.isFinite(id) || !Number.isFinite(projectId)) {
+    return null;
+  }
+
+  const relatedRaw = raw.related_tasks;
+  let related_tasks: VikunjaTask['related_tasks'];
+  if (relatedRaw && typeof relatedRaw === 'object') {
+    related_tasks = {};
+    for (const [kind, tasks] of Object.entries(relatedRaw as Record<string, unknown>)) {
+      if (!Array.isArray(tasks)) {
+        continue;
+      }
+      const normalized = tasks
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+        .map(normalizeTask)
+        .filter((task): task is VikunjaTask => task !== null);
+      if (normalized.length > 0) {
+        related_tasks[kind as VikunjaRelationKind] = normalized;
+      }
+    }
+  }
+
+  return {
+    id,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    description: typeof raw.description === 'string' ? raw.description : '',
+    done: Boolean(raw.done),
+    project_id: projectId,
+    updated: typeof raw.updated === 'string' ? raw.updated : '',
+    related_tasks,
+  };
+}
+
+async function readBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function messageFromBody(body: unknown, fallback: string): string {
+  if (body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    if (typeof record.message === 'string' && record.message.trim()) {
+      return record.message;
+    }
+  }
+  if (typeof body === 'string' && body.trim()) {
+    return body;
+  }
+  return fallback;
+}

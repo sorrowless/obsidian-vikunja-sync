@@ -2,7 +2,7 @@
 
 Bidirectional sync between Obsidian checklist tasks and [Vikunja](https://vikunja.io/) projects.
 
-> **Status:** Phase 1 skeleton is in place (settings UI + placeholder **Sync now** command). Bidirectional sync is not implemented yet.
+> **Status:** Phase 2 is in place (Vikunja API client, note parser, Test connection). Bidirectional sync engine is not implemented yet.
 
 ## What it will do
 

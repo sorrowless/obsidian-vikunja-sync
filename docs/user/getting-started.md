@@ -1,6 +1,6 @@
 # Getting Started
 
-> **Status:** The plugin skeleton loads in Obsidian and exposes settings plus a placeholder **Sync now** command. Bidirectional sync is not implemented yet.
+> **Status:** The plugin loads in Obsidian with settings and **Test connection**. Bidirectional sync is not implemented yet.
 
 This plugin syncs checklist tasks between Obsidian notes and projects on a Vikunja instance (including self-hosted).
 

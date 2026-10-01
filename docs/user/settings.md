@@ -1,6 +1,6 @@
 # Settings
 
-> **Status:** Settings fields below are available in the plugin settings tab. Connection testing and live sync still land in later phases.
+> **Status:** Settings fields and **Test connection** are available. Live bidirectional sync still lands in Phase 3.
 
 ## Connection
 
@@ -9,7 +9,7 @@
 | Vikunja base URL | Root URL of your instance, without a trailing `/api` path. Example: `https://vikunja.example` |
 | API token | Bearer token from Vikunja → Settings → API Tokens |
 
-A future **Test connection** control will verify that the token can list projects.
+A **Test connection** button verifies that the saved URL and token can list projects.
 
 ## Note ↔ project mappings
 

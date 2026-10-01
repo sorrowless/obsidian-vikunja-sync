@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the architecture for the Obsidian ↔ Vikunja sync plugin. Phase 1 delivers the plugin skeleton and settings UI; sync engine pieces below are still planned.
+This document describes the architecture for the Obsidian ↔ Vikunja sync plugin. Phase 2 delivers the Vikunja API client, note parser, and connection test; the sync engine itself is still Phase 3.
 
 ## Goals
 
