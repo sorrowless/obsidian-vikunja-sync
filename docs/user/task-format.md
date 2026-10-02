@@ -18,6 +18,27 @@ After the first sync that creates the task in Vikunja, the line becomes a link:
 
 The link text is the title. The URL points at the Vikunja task page.
 
+## Start and end times
+
+Start and end times live **after** the title link (not inside the `[...]` brackets) and sync to Vikunja `start_date` / `end_date`:
+
+```markdown
+- [ ] [Team standup](https://vikunja.example/tasks/42) 🛫 2026-10-02 10:00 📅 2026-10-02 10:30
+```
+
+| Marker | Meaning | Vikunja field |
+| --- | --- | --- |
+| `🛫` | Start | `start_date` |
+| `📅` | End | `end_date` |
+
+Accepted values: `YYYY-MM-DD` or `YYYY-MM-DD HH:mm` (local time). After sync the plugin rewrites the line in this canonical form; the link text stays the title only.
+
+Unlinked tasks may use the same markers:
+
+```markdown
+- [ ] Draft proposal 🛫 2026-10-05 📅 2026-10-06
+```
+
 ## Description
 
 Description lines are indented bullets **without** checkboxes, directly under the task:

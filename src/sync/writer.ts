@@ -1,4 +1,5 @@
 import { taskPageUrl } from '../vikunja/urls';
+import { formatTaskDatesSuffix } from '../note/dates';
 
 export interface RenderableTask {
   indent: string;
@@ -6,6 +7,8 @@ export interface RenderableTask {
   checkboxChar: string;
   title: string;
   vikunjaTaskId: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
   descriptionLines: string[];
   children: RenderableTask[];
 }
@@ -30,10 +33,11 @@ export function renderTask(
   indentUnit = DEFAULT_INDENT_UNIT,
 ): string {
   const lines: string[] = [];
-  const body =
+  const linkOrTitle =
     task.vikunjaTaskId !== null
       ? `[${task.title}](${taskPageUrl(baseUrl, task.vikunjaTaskId)})`
       : task.title;
+  const body = `${linkOrTitle}${formatTaskDatesSuffix(task.startDate ?? null, task.endDate ?? null)}`;
   lines.push(`${task.indent}${task.listMarker} [${task.checkboxChar}] ${body}`);
 
   const childIndent = `${task.indent}${indentUnit}`;

@@ -14,10 +14,14 @@ export interface ParsedTaskNode {
    * `null` means the checkbox character is not synced for done state.
    */
   done: boolean | null;
-  /** Task title (link text when linked, otherwise full body). */
+  /** Task title (link text when linked, otherwise body without date tokens). */
   title: string;
   /** Vikunja task id when the body is a link to this instance. */
   vikunjaTaskId: number | null;
+  /** ISO UTC start time, or null when unset. Synced to Vikunja `start_date`. */
+  startDate: string | null;
+  /** ISO UTC end time, or null when unset. Synced to Vikunja `end_date`. */
+  endDate: string | null;
   /** Indented non-checkbox bullets under this task (description). */
   descriptionLines: string[];
   /** Source line indices for descriptionLines (parallel array). */

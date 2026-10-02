@@ -71,4 +71,23 @@ describe('parseNoteTasks', () => {
   it('returns an empty list for notes without checklists', () => {
     expect(parseNoteTasks('# Hello\n\n- plain bullet', { vikunjaBaseUrl: BASE })).toEqual([]);
   });
+
+  it('keeps the Vikunja link when start/end dates follow it', () => {
+    const markdown =
+      '- [ ] [Buy milk](https://vikunja.example/tasks/42) 🛫 2026-10-02 10:00 📅 2026-10-02 12:00';
+    const [task] = parseNoteTasks(markdown, { vikunjaBaseUrl: BASE });
+    expect(task?.title).toBe('Buy milk');
+    expect(task?.vikunjaTaskId).toBe(42);
+    expect(task?.startDate).toMatch(/2026-10-02/);
+    expect(task?.endDate).toMatch(/2026-10-02/);
+  });
+
+  it('parses dates on unlinked tasks without putting them in the title', () => {
+    const markdown = '- [ ] Call dentist 🛫 2026-10-05 📅 2026-10-06';
+    const [task] = parseNoteTasks(markdown, { vikunjaBaseUrl: BASE });
+    expect(task?.title).toBe('Call dentist');
+    expect(task?.vikunjaTaskId).toBeNull();
+    expect(task?.startDate).toBeTruthy();
+    expect(task?.endDate).toBeTruthy();
+  });
 });

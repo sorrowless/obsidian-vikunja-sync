@@ -10,6 +10,10 @@ export interface VikunjaTask {
   done: boolean;
   project_id: number;
   updated: string;
+  /** ISO datetime, or null when unset. */
+  start_date: string | null;
+  /** ISO datetime, or null when unset. */
+  end_date: string | null;
   related_tasks?: Partial<Record<VikunjaRelationKind, VikunjaTask[]>>;
 }
 
@@ -30,12 +34,16 @@ export interface CreateTaskInput {
   title: string;
   description?: string;
   done?: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 export interface UpdateTaskInput {
   title?: string;
   description?: string;
   done?: boolean;
+  start_date?: string | null;
+  end_date?: string | null;
 }
 
 export interface CreateRelationInput {

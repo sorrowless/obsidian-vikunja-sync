@@ -1,5 +1,6 @@
 import { apiRoot, normalizeBaseUrl } from './urls';
 import { createFetchTransport, type HttpTransport } from './http';
+import { normalizeVikunjaDate, toVikunjaDatePayload } from '../note/dates';
 import {
   VikunjaApiError,
   type CreateRelationInput,
@@ -79,6 +80,8 @@ export class VikunjaClient {
       title: input.title,
       description: input.description ?? '',
       done: input.done ?? false,
+      start_date: toVikunjaDatePayload(input.start_date ?? null),
+      end_date: toVikunjaDatePayload(input.end_date ?? null),
     });
     const task = normalizeTask(raw);
     if (!task) {
@@ -97,6 +100,12 @@ export class VikunjaClient {
     }
     if (input.done !== undefined) {
       body.done = input.done;
+    }
+    if (input.start_date !== undefined) {
+      body.start_date = toVikunjaDatePayload(input.start_date);
+    }
+    if (input.end_date !== undefined) {
+      body.end_date = toVikunjaDatePayload(input.end_date);
     }
 
     const raw = await this.request<Record<string, unknown>>('POST', `/tasks/${taskId}`, body);
@@ -279,6 +288,8 @@ function normalizeTask(raw: Record<string, unknown>): VikunjaTask | null {
     done: Boolean(raw.done),
     project_id: projectId,
     updated: typeof raw.updated === 'string' ? raw.updated : '',
+    start_date: normalizeVikunjaDate(raw.start_date),
+    end_date: normalizeVikunjaDate(raw.end_date),
     related_tasks,
   };
 }

@@ -9,7 +9,7 @@ import {
 } from './settings';
 import { SyncCoordinator } from './sync/coordinator';
 import { syncAllMappings } from './sync/engine';
-import { emptyLedger, type LedgerStore, type PendingLink } from './sync/ledger';
+import { emptyLedger, type LedgerStore, type PendingLink, normalizeLedgerStore } from './sync/ledger';
 import { collectSyncErrors, formatSyncNotice } from './sync/report';
 import { SyncReportModal } from './sync/report-modal';
 import { pathsReferToSameNote, resolveMarkdownFile } from './vault/resolve-note';
@@ -305,10 +305,7 @@ function normalizeSettings(saved: Partial<PluginSettings>): PluginSettings {
 }
 
 function normalizeLedger(raw: LedgerStore | undefined): LedgerStore {
-  if (!raw || typeof raw !== 'object' || !raw.entries || typeof raw.entries !== 'object') {
-    return emptyLedger();
-  }
-  return { entries: { ...raw.entries } };
+  return normalizeLedgerStore(raw);
 }
 
 function normalizePendingLinks(raw: PendingLink[] | undefined): PendingLink[] {

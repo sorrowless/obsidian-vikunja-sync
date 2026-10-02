@@ -11,22 +11,23 @@ Synced fields:
 - Done state
 - Parent / child nesting
 - Vikunja task URL in the Obsidian task line
+- Start / end times (`🛫` / `📅` after the link ↔ Vikunja `start_date` / `end_date`)
 
 Not synced in v1:
 
-- Due dates, start/end dates, priority, labels, assignees, reminders, recurrence
+- Due dates, priority, labels, assignees, reminders, recurrence
 - Kanban buckets / board columns
 - Automatic deletion
 
 ## Task identity
 
-A task is linked when its Obsidian line contains a Markdown link whose URL matches:
+A task is linked when its Obsidian line contains a Markdown link (at the start of the checklist body) whose URL matches:
 
 ```text
 {vikunjaBaseUrl}/tasks/{numericId}
 ```
 
-Trailing slashes and query fragments are ignored when extracting the id. The link text is the Obsidian title.
+Trailing slashes and query fragments are ignored when extracting the id. The link text is the Obsidian title. Optional start/end markers after the link do **not** break identity.
 
 Unlinked checklist items are candidates for create-in-Vikunja.
 
@@ -35,7 +36,7 @@ Unlinked checklist items are candidates for create-in-Vikunja.
 After any successful sync write, a synced task block looks like:
 
 ```markdown
-- [ ] [Task title](https://vikunja.example/tasks/123)
+- [ ] [Task title](https://vikunja.example/tasks/123) 🛫 2026-10-02 10:00 📅 2026-10-02 11:00
     - description line one
     - description line two
     - [ ] [Child title](https://vikunja.example/tasks/456)
@@ -44,13 +45,14 @@ After any successful sync write, a synced task block looks like:
 
 Rules:
 
-1. The primary line is a checklist item whose body is a single link `[title](url)`.
-2. Description is represented as indented bullets **without** checkboxes.
-3. Child tasks are indented checklist items (with checkboxes).
-4. On rewrite, description lines come first, then child tasks.
-5. Existing list marker (`-`, `*`, or numbered) and indent style are preserved for an existing block.
-6. Newly created blocks use `-` and four spaces per indent level.
-7. New Obsidian tasks created from Vikunja are appended at the end of the mapped note.
+1. The primary line is a checklist item whose body starts with a link `[title](url)`, optionally followed by start/end date markers.
+2. Start (`🛫`) and end (`📅`) times are written after the link; they are not part of the link text.
+3. Description is represented as indented bullets **without** checkboxes.
+4. Child tasks are indented checklist items (with checkboxes).
+5. On rewrite, description lines come first, then child tasks.
+6. Existing list marker (`-`, `*`, or numbered) and indent style are preserved for an existing block.
+7. Newly created blocks use `-` and four spaces per indent level.
+8. New Obsidian tasks created from Vikunja are appended at the end of the mapped note.
 
 ## Done state
 

@@ -49,7 +49,7 @@ Outcome: a repository that can be developed against without ambiguity on v1 beha
 
 Candidates, in likely order:
 
-1. Due dates (Obsidian Tasks emoji / Dataview-compatible formats ↔ Vikunja `due_date`)
+1. Due dates (Vikunja `due_date`; needs a marker other than `📅`, which already maps to `end_date`) — start/end (`🛫` / `📅`) already sync
 2. Priority
 3. Labels / tags
 4. Explicit delete policy (user-configurable: delete both sides, unlink only, or keep current unresolved behaviour)

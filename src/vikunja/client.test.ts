@@ -94,6 +94,8 @@ describe('VikunjaClient request shaping', () => {
       title: 'New',
       description: 'Body',
       done: false,
+      start_date: '0001-01-01T00:00:00Z',
+      end_date: '0001-01-01T00:00:00Z',
     });
     expect(String(createCall?.[0])).toBe('https://vikunja.example/api/v1/projects/3/tasks');
 

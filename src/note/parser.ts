@@ -1,10 +1,13 @@
-import { extractTaskIdFromUrl, parseMarkdownLink } from '../vikunja/urls';
+import { extractTaskIdFromUrl } from '../vikunja/urls';
+import { parseTaskDates } from './dates';
 import type { ParseNoteOptions, ParsedTaskNode } from './types';
 
 const TASK_LINE =
   /^([\t >]*)([-*]|[0-9]+\.)\s+\[(.)\]\s+(.*)$/u;
 const BULLET_LINE =
   /^([\t >]*)([-*]|[0-9]+\.)\s+(.*)$/u;
+/** Link at the start of the body, with optional trailing metadata (dates, etc.). */
+const LINK_AT_START = /^\[([^\]]*)\]\(([^)\s]+)\)\s*(.*)$/u;
 
 interface FlatTask {
   lineIndex: number;
@@ -15,6 +18,8 @@ interface FlatTask {
   done: boolean | null;
   title: string;
   vikunjaTaskId: number | null;
+  startDate: string | null;
+  endDate: string | null;
   descriptionLines: string[];
   descriptionLineIndices: number[];
 }
@@ -43,7 +48,7 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
       const listMarker = taskMatch[2] ?? '-';
       const checkboxChar = taskMatch[3] ?? ' ';
       const body = (taskMatch[4] ?? '').trimEnd();
-      const { title, vikunjaTaskId } = resolveTitleAndId(body, options.vikunjaBaseUrl);
+      const resolved = resolveTaskBody(body, options.vikunjaBaseUrl);
 
       tasks.push({
         lineIndex: i,
@@ -52,8 +57,10 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
         listMarker,
         checkboxChar,
         done: doneFromCheckbox(checkboxChar),
-        title,
-        vikunjaTaskId,
+        title: resolved.title,
+        vikunjaTaskId: resolved.vikunjaTaskId,
+        startDate: resolved.startDate,
+        endDate: resolved.endDate,
         descriptionLines: [],
         descriptionLineIndices: [],
       });
@@ -92,19 +99,35 @@ export function indentWidth(indent: string): number {
   return width;
 }
 
-function resolveTitleAndId(
+function resolveTaskBody(
   body: string,
   vikunjaBaseUrl: string,
-): { title: string; vikunjaTaskId: number | null } {
-  const link = parseMarkdownLink(body);
-  if (!link) {
-    return { title: body.trim(), vikunjaTaskId: null };
+): {
+  title: string;
+  vikunjaTaskId: number | null;
+  startDate: string | null;
+  endDate: string | null;
+} {
+  const linkMatch = body.match(LINK_AT_START);
+  if (linkMatch) {
+    const linkTitle = linkMatch[1] ?? '';
+    const url = linkMatch[2] ?? '';
+    const trailing = linkMatch[3] ?? '';
+    const dates = parseTaskDates(trailing);
+    return {
+      title: linkTitle,
+      vikunjaTaskId: extractTaskIdFromUrl(url, vikunjaBaseUrl),
+      startDate: dates.startDate,
+      endDate: dates.endDate,
+    };
   }
 
-  const taskId = extractTaskIdFromUrl(link.url, vikunjaBaseUrl);
+  const dates = parseTaskDates(body);
   return {
-    title: link.title,
-    vikunjaTaskId: taskId,
+    title: dates.remainder,
+    vikunjaTaskId: null,
+    startDate: dates.startDate,
+    endDate: dates.endDate,
   };
 }
 
@@ -150,6 +173,8 @@ function buildTree(tasks: FlatTask[]): ParsedTaskNode[] {
       done: task.done,
       title: task.title,
       vikunjaTaskId: task.vikunjaTaskId,
+      startDate: task.startDate,
+      endDate: task.endDate,
       descriptionLines: [...task.descriptionLines],
       descriptionLineIndices: [...task.descriptionLineIndices],
       children: [],

@@ -3,6 +3,8 @@ export interface ContentSnapshot {
   description: string;
   done: boolean;
   parentTaskId: number | null;
+  startDate: string | null;
+  endDate: string | null;
 }
 
 export interface LedgerEntry {
@@ -12,6 +14,8 @@ export interface LedgerEntry {
   description: string;
   done: boolean;
   parentTaskId: number | null;
+  startDate: string | null;
+  endDate: string | null;
   contentHash: string;
   vikunjaUpdated: string;
   lastSyncedAt: string;
@@ -105,12 +109,16 @@ export function contentSnapshot(input: {
   description: string;
   done: boolean;
   parentTaskId: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
 }): ContentSnapshot {
   return {
     title: input.title,
     description: input.description,
     done: input.done,
     parentTaskId: input.parentTaskId,
+    startDate: input.startDate ?? null,
+    endDate: input.endDate ?? null,
   };
 }
 
@@ -121,6 +129,8 @@ export function contentHash(snapshot: ContentSnapshot): string {
     snapshot.description,
     snapshot.done ? '1' : '0',
     snapshot.parentTaskId === null ? '' : String(snapshot.parentTaskId),
+    snapshot.startDate ?? '',
+    snapshot.endDate ?? '',
   ].join('\0');
   return fnv1aHex(payload);
 }
@@ -131,6 +141,8 @@ export function snapshotFromLedger(entry: LedgerEntry): ContentSnapshot {
     description: entry.description,
     done: entry.done,
     parentTaskId: entry.parentTaskId,
+    startDate: entry.startDate ?? null,
+    endDate: entry.endDate ?? null,
   };
 }
 
@@ -141,6 +153,8 @@ export function makeLedgerEntry(input: {
   description: string;
   done: boolean;
   parentTaskId: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
   vikunjaUpdated: string;
   lastSyncedAt?: string;
   unresolved?: boolean;
@@ -153,11 +167,47 @@ export function makeLedgerEntry(input: {
     description: snapshot.description,
     done: snapshot.done,
     parentTaskId: snapshot.parentTaskId,
+    startDate: snapshot.startDate,
+    endDate: snapshot.endDate,
     contentHash: contentHash(snapshot),
     vikunjaUpdated: input.vikunjaUpdated,
     lastSyncedAt: input.lastSyncedAt ?? new Date().toISOString(),
     unresolved: input.unresolved,
   };
+}
+
+/**
+ * Normalize persisted ledger entries (fill missing date fields, recompute hash)
+ * so upgrading the plugin does not mark every task as changed.
+ */
+export function normalizeLedgerStore(raw: LedgerStore | undefined): LedgerStore {
+  if (!raw || typeof raw !== 'object' || !raw.entries || typeof raw.entries !== 'object') {
+    return emptyLedger();
+  }
+  const entries: Record<string, LedgerEntry> = {};
+  for (const [key, value] of Object.entries(raw.entries)) {
+    if (!value || typeof value !== 'object') {
+      continue;
+    }
+    const entry = value as LedgerEntry;
+    entries[key] = makeLedgerEntry({
+      taskId: Number(entry.taskId),
+      mappingKey: String(entry.mappingKey ?? ''),
+      title: String(entry.title ?? ''),
+      description: String(entry.description ?? ''),
+      done: Boolean(entry.done),
+      parentTaskId:
+        entry.parentTaskId === null || entry.parentTaskId === undefined
+          ? null
+          : Number(entry.parentTaskId),
+      startDate: entry.startDate ?? null,
+      endDate: entry.endDate ?? null,
+      vikunjaUpdated: String(entry.vikunjaUpdated ?? ''),
+      lastSyncedAt: String(entry.lastSyncedAt ?? new Date().toISOString()),
+      unresolved: entry.unresolved,
+    });
+  }
+  return { entries };
 }
 
 function fnv1aHex(input: string): string {

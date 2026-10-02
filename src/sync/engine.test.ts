@@ -19,6 +19,8 @@ function task(partial: Partial<VikunjaTask> & Pick<VikunjaTask, 'id' | 'title'>)
     done: false,
     project_id: 1,
     updated: '2026-01-01T00:00:00Z',
+    start_date: null,
+    end_date: null,
     ...partial,
   };
 }
@@ -127,12 +129,22 @@ describe('syncAllMappings', () => {
     );
 
     expect(result.mappings[0]?.counts.createdRemote).toBe(1);
+    expect(result.mappings[0]?.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'create-remote',
+          title: 'Buy milk',
+        }),
+      ]),
+    );
     expect(notes.get('Tasks.md')).toContain('[Buy milk](https://vikunja.example/tasks/42)');
     expect(ledger.entries[ledgerEntryKey(mappingKey('Tasks.md', 7), 42)]?.title).toBe('Buy milk');
     expect(createTask).toHaveBeenCalledWith(7, {
       title: 'Buy milk',
       description: '',
       done: false,
+      start_date: null,
+      end_date: null,
     });
   });
 
@@ -213,6 +225,8 @@ describe('syncAllMappings', () => {
       title: 'B',
       description: '',
       done: false,
+      start_date: null,
+      end_date: null,
     });
   });
 
@@ -334,6 +348,15 @@ describe('syncAllMappings', () => {
     });
 
     expect(result.mappings[0]?.counts.unresolvedRemovals).toBe(1);
+    expect(result.mappings[0]?.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'unresolved-missing-remote',
+          title: 'Gone remote',
+          taskId: 7,
+        }),
+      ]),
+    );
     expect(client.createTask).not.toHaveBeenCalled();
     expect(notes.get('Tasks.md')).toContain('tasks/7');
     expect(ledger.entries[ledgerEntryKey(key, 7)]?.unresolved).toBe(true);
@@ -481,10 +504,75 @@ describe('syncAllMappings', () => {
     );
 
     expect(result.dryRun).toBe(true);
-    expect(result.message.startsWith('Vikunja Sync dry-run')).toBe(true);
+    expect(result.message).toContain('Vikunja Sync dry-run');
+    expect(result.message).toContain('1 would create in Vikunja');
     expect(result.mappings[0]?.counts.createdRemote).toBe(1);
+    expect(result.mappings[0]?.actions).toEqual([
+      expect.objectContaining({ kind: 'create-remote', title: 'Buy milk' }),
+    ]);
     expect(createTask).not.toHaveBeenCalled();
     expect(Object.keys(ledger.entries)).toHaveLength(0);
     expect(notes.get('Tasks.md')).toBe('- [ ] Buy milk\n');
+  });
+
+  it('pushes start/end dates without treating the task as a new create', async () => {
+    const key = mappingKey('Tasks.md', 1);
+    const ledger = emptyLedger();
+    ledger.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Meeting',
+      description: '',
+      done: false,
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+
+    const notes = new Map<string, string>([
+      [
+        'Tasks.md',
+        '- [ ] [Meeting](https://vikunja.example/tasks/5) 🛫 2026-10-02 10:00 📅 2026-10-02 11:00\n',
+      ],
+    ]);
+    const updateTask = vi.fn().mockResolvedValue(
+      task({
+        id: 5,
+        title: 'Meeting',
+        updated: '2026-10-02T00:00:00Z',
+        start_date: '2026-10-02T07:00:00.000Z',
+        end_date: '2026-10-02T08:00:00.000Z',
+      }),
+    );
+    const client = {
+      listProjectTasks: vi.fn().mockResolvedValue([task({ id: 5, title: 'Meeting' })]),
+      createTask: vi.fn(),
+      updateTask,
+      createRelation: vi.fn(),
+      deleteRelation: vi.fn(),
+    } as unknown as VikunjaClient;
+
+    const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
+      baseUrl: 'https://vikunja.example',
+      conflictPolicy: 'prefer-obsidian',
+      client,
+      readNote: async (path) => notes.get(path) ?? '',
+      writeNote: async (path, content) => {
+        notes.set(path, content);
+      },
+    });
+
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(result.mappings[0]?.counts.pushed).toBe(1);
+    expect(updateTask).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({
+        title: 'Meeting',
+        start_date: expect.any(String),
+        end_date: expect.any(String),
+      }),
+    );
+    expect(notes.get('Tasks.md')).toContain('[Meeting](https://vikunja.example/tasks/5)');
+    expect(notes.get('Tasks.md')).toContain('🛫');
+    expect(notes.get('Tasks.md')).toContain('📅');
   });
 });

@@ -5,23 +5,42 @@ import { collectSyncErrors, formatSyncNotice, formatSyncReport } from './report'
 function sampleResult(overrides?: Partial<SyncRunResult>): SyncRunResult {
   return {
     dryRun: true,
-    message: 'Vikunja Sync dry-run: 1 mapping, +0 remote, +0 local, 0 pushed, 0 pulled, 0 conflicts, 0 unresolved, 1 error',
+    message:
+      'Vikunja Sync dry-run: 1 mapping, 2 would create in Vikunja, 1 unresolved, 1 error',
     mappings: [
       {
         notePath: 'Tasks/Work.md',
         projectId: 3,
         counts: {
-          createdRemote: 0,
+          createdRemote: 2,
           createdLocal: 0,
           pushed: 0,
           pulled: 0,
           conflictsResolved: 0,
           unchanged: 0,
-          unresolvedRemovals: 0,
+          unresolvedRemovals: 1,
           recoveredPendingLinks: 0,
         },
+        actions: [
+          {
+            kind: 'create-remote',
+            title: 'Buy milk',
+            detail: 'unlinked checklist item in the note',
+          },
+          {
+            kind: 'create-remote',
+            title: 'Call dentist',
+            detail: 'unlinked checklist item in the note',
+          },
+          {
+            kind: 'unresolved-missing-local',
+            title: 'Old remote task',
+            taskId: 42,
+            detail: 'was synced before, still exists in Vikunja, but is no longer in the note',
+          },
+        ],
         errors: ['Note not found: Tasks/Work.md'],
-        unresolvedTaskIds: [],
+        unresolvedTaskIds: [42],
         pendingLinks: [],
       },
     ],
@@ -30,8 +49,13 @@ function sampleResult(overrides?: Partial<SyncRunResult>): SyncRunResult {
 }
 
 describe('sync report formatting', () => {
-  it('includes the actual error text in the notice', () => {
+  it('includes concrete action titles and errors in the notice', () => {
     const notice = formatSyncNotice(sampleResult());
+    expect(notice).toContain('would create in Vikunja');
+    expect(notice).toContain('Buy milk');
+    expect(notice).toContain('Call dentist');
+    expect(notice).toContain('Unresolved — known from ledger, missing in note');
+    expect(notice).toContain('Old remote task');
     expect(notice).toContain('1 error');
     expect(notice).toContain('Tasks/Work.md: Note not found: Tasks/Work.md');
   });
@@ -42,9 +66,13 @@ describe('sync report formatting', () => {
     ]);
   });
 
-  it('builds a full report with mapping counts and errors', () => {
+  it('builds a full report with per-task action lists and errors', () => {
     const report = formatSyncReport(sampleResult());
     expect(report).toContain('Tasks/Work.md → project 3');
+    expect(report).toContain('Would create in Vikunja (2):');
+    expect(report).toContain('• Buy milk');
+    expect(report).toContain('Unresolved — known from ledger, missing in note (1):');
+    expect(report).toContain('Old remote task [#42]');
     expect(report).toContain('Errors');
     expect(report).toContain('Note not found: Tasks/Work.md');
   });

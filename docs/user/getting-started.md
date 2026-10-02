@@ -31,7 +31,7 @@ This plugin syncs checklist tasks between Obsidian notes and projects on a Vikun
 - Nested subtasks
 - A Markdown link from the Obsidian task line to the Vikunja task page
 
-Not synced yet: due dates, priority, labels, assignees, reminders, recurrence, or Kanban columns.
+Not synced yet: due dates, priority, labels, assignees, reminders, recurrence, or Kanban columns. Start/end times (`🛫` / `📅`) sync with Vikunja.
 
 ## Next reading
 

@@ -16,6 +16,8 @@ This document describes the architecture for the Obsidian ↔ Vikunja sync plugi
 - Mapping one note to multiple Vikunja projects, or one project to multiple notes.
 - Using Vikunja API v2 (v1 only; v2 may be added later as an adapter).
 
+Start/end times (`🛫` / `📅` ↔ Vikunja `start_date` / `end_date`) are synced.
+
 ## High-level components
 
 ```text
