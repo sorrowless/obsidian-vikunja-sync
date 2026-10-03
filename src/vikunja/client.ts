@@ -6,6 +6,7 @@ import {
   type CreateRelationInput,
   type CreateTaskInput,
   type UpdateTaskInput,
+  type VikunjaLabel,
   type VikunjaProject,
   type VikunjaRelationKind,
   type VikunjaTask,
@@ -114,6 +115,31 @@ export class VikunjaClient {
       throw new VikunjaApiError('Invalid update-task payload', 500, raw);
     }
     return task;
+  }
+
+  async listLabels(): Promise<VikunjaLabel[]> {
+    const raw = await this.requestAllPages<Record<string, unknown>>('/labels');
+    return raw.map(normalizeLabel).filter((label): label is VikunjaLabel => label !== null);
+  }
+
+  async createLabel(title: string, hexColor = 'e8e8e8'): Promise<VikunjaLabel> {
+    const raw = await this.request<Record<string, unknown>>('PUT', '/labels', {
+      title,
+      hex_color: hexColor,
+    });
+    const label = normalizeLabel(raw);
+    if (!label) {
+      throw new VikunjaApiError('Invalid create-label payload', 500, raw);
+    }
+    return label;
+  }
+
+  async addLabelToTask(taskId: number, labelId: number): Promise<void> {
+    await this.request('PUT', `/tasks/${taskId}/labels`, { label_id: labelId });
+  }
+
+  async removeLabelFromTask(taskId: number, labelId: number): Promise<void> {
+    await this.request('DELETE', `/tasks/${taskId}/labels/${labelId}`);
   }
 
   async createRelation(taskId: number, input: CreateRelationInput): Promise<void> {
@@ -286,12 +312,43 @@ function normalizeTask(raw: Record<string, unknown>): VikunjaTask | null {
     title: typeof raw.title === 'string' ? raw.title : '',
     description: typeof raw.description === 'string' ? raw.description : '',
     done: Boolean(raw.done),
+    percent_done: normalizePercentDone(raw.percent_done),
     project_id: projectId,
     updated: typeof raw.updated === 'string' ? raw.updated : '',
     start_date: normalizeVikunjaDate(raw.start_date),
     end_date: normalizeVikunjaDate(raw.end_date),
+    labels: normalizeLabels(raw.labels),
     related_tasks,
   };
+}
+
+function normalizeLabel(raw: Record<string, unknown>): VikunjaLabel | null {
+  const id = Number(raw.id);
+  if (!Number.isFinite(id)) {
+    return null;
+  }
+  return {
+    id,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    hex_color: typeof raw.hex_color === 'string' ? raw.hex_color : undefined,
+  };
+}
+
+function normalizeLabels(raw: unknown): VikunjaLabel[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map(normalizeLabel)
+    .filter((label): label is VikunjaLabel => label !== null);
+}
+
+function normalizePercentDone(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+  return value;
 }
 
 function parseBody(text: string): unknown {

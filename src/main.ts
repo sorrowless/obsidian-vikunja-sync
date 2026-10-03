@@ -314,18 +314,29 @@ function normalizePendingLinks(raw: PendingLink[] | undefined): PendingLink[] {
   }
   return raw
     .filter((item) => item && typeof item === 'object')
-    .map((item) => ({
-      mappingKey: String(item.mappingKey ?? ''),
-      taskId: Number(item.taskId),
-      title: String(item.title ?? ''),
-      description: String(item.description ?? ''),
-      done: Boolean(item.done),
-      parentTaskId:
-        item.parentTaskId === null || item.parentTaskId === undefined
-          ? null
-          : Number(item.parentTaskId),
-      vikunjaUpdated: String(item.vikunjaUpdated ?? ''),
-    }))
+    .map((item) => {
+      const legacy = item as PendingLink & { done?: boolean };
+      const status =
+        legacy.status === 'todo' ||
+        legacy.status === 'in_progress' ||
+        legacy.status === 'done'
+          ? legacy.status
+          : legacy.done
+            ? 'done'
+            : 'todo';
+      return {
+        mappingKey: String(item.mappingKey ?? ''),
+        taskId: Number(item.taskId),
+        title: String(item.title ?? ''),
+        description: String(item.description ?? ''),
+        status,
+        parentTaskId:
+          item.parentTaskId === null || item.parentTaskId === undefined
+            ? null
+            : Number(item.parentTaskId),
+        vikunjaUpdated: String(item.vikunjaUpdated ?? ''),
+      };
+    })
     .filter((item) => item.mappingKey && Number.isFinite(item.taskId));
 }
 

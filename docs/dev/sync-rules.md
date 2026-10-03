@@ -54,14 +54,19 @@ Rules:
 7. Newly created blocks use `-` and four spaces per indent level.
 8. New Obsidian tasks created from Vikunja are appended at the end of the mapped note.
 
-## Done state
+## Done / workflow status
 
-| Obsidian | Vikunja |
+Status is synced through Vikunja **labels** (not Kanban buckets):
+
+| Obsidian | Vikunja progress label |
 | --- | --- |
-| `[ ]` | `done: false` |
-| `[x]` or `[X]` | `done: true` |
+| `[ ]` | `ToDo` |
+| `[/]` | `In Progress` (or any non-ToDo/Done label when reading) |
+| `[x]` or `[X]` | `Done` |
 
-Any other checkbox character (for example `[/]`, `[-]`) is left unchanged and is **not** synced for that task’s done field. Title, description, and nesting still sync.
+When Obsidian status changes, the plugin removes **all** labels on the task (including non-canonical ones such as `review`, because any non-ToDo/Done label means In Progress when reading) and attaches the matching canonical label. New tasks created from Obsidian get a `ToDo` label.
+
+`done` on the Vikunja task is kept aligned (`true` only for `Done`). Other Obsidian checkbox characters (for example `[-]`) are not mapped to labels.
 
 ## Nesting
 

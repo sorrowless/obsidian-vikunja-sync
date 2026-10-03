@@ -1,7 +1,15 @@
+import { htmlToPlainText } from './html-to-text';
+import {
+  doneFlagFromStatus,
+  isTaskStatus,
+  statusFromDoneFlag,
+  type TaskStatus,
+} from './status';
+
 export interface ContentSnapshot {
   title: string;
   description: string;
-  done: boolean;
+  status: TaskStatus;
   parentTaskId: number | null;
   startDate: string | null;
   endDate: string | null;
@@ -12,7 +20,9 @@ export interface LedgerEntry {
   mappingKey: string;
   title: string;
   description: string;
-  done: boolean;
+  /** @deprecated Prefer `status`. Kept for older plugin data until normalize. */
+  done?: boolean;
+  status: TaskStatus;
   parentTaskId: number | null;
   startDate: string | null;
   endDate: string | null;
@@ -33,7 +43,7 @@ export interface PendingLink {
   taskId: number;
   title: string;
   description: string;
-  done: boolean;
+  status: TaskStatus;
   parentTaskId: number | null;
   vikunjaUpdated: string;
 }
@@ -81,8 +91,6 @@ export function ledgerEntryKey(mappingKeyValue: string, taskId: number): string 
   return `${mappingKeyValue}::${taskId}`;
 }
 
-import { htmlToPlainText } from './html-to-text';
-
 export function descriptionFromLines(lines: string[]): string {
   return lines.join('\n');
 }
@@ -107,7 +115,7 @@ export function normalizeDescription(description: string): string {
 export function contentSnapshot(input: {
   title: string;
   description: string;
-  done: boolean;
+  status: TaskStatus;
   parentTaskId: number | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -115,7 +123,7 @@ export function contentSnapshot(input: {
   return {
     title: input.title,
     description: input.description,
-    done: input.done,
+    status: input.status,
     parentTaskId: input.parentTaskId,
     startDate: input.startDate ?? null,
     endDate: input.endDate ?? null,
@@ -127,7 +135,7 @@ export function contentHash(snapshot: ContentSnapshot): string {
   const payload = [
     snapshot.title,
     snapshot.description,
-    snapshot.done ? '1' : '0',
+    snapshot.status,
     snapshot.parentTaskId === null ? '' : String(snapshot.parentTaskId),
     snapshot.startDate ?? '',
     snapshot.endDate ?? '',
@@ -139,7 +147,7 @@ export function snapshotFromLedger(entry: LedgerEntry): ContentSnapshot {
   return {
     title: entry.title,
     description: entry.description,
-    done: entry.done,
+    status: resolveEntryStatus(entry),
     parentTaskId: entry.parentTaskId,
     startDate: entry.startDate ?? null,
     endDate: entry.endDate ?? null,
@@ -151,7 +159,7 @@ export function makeLedgerEntry(input: {
   mappingKey: string;
   title: string;
   description: string;
-  done: boolean;
+  status: TaskStatus;
   parentTaskId: number | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -165,7 +173,8 @@ export function makeLedgerEntry(input: {
     mappingKey: input.mappingKey,
     title: snapshot.title,
     description: snapshot.description,
-    done: snapshot.done,
+    status: snapshot.status,
+    done: doneFlagFromStatus(snapshot.status),
     parentTaskId: snapshot.parentTaskId,
     startDate: snapshot.startDate,
     endDate: snapshot.endDate,
@@ -177,7 +186,7 @@ export function makeLedgerEntry(input: {
 }
 
 /**
- * Normalize persisted ledger entries (fill missing date fields, recompute hash)
+ * Normalize persisted ledger entries (fill missing date/status fields, recompute hash)
  * so upgrading the plugin does not mark every task as changed.
  */
 export function normalizeLedgerStore(raw: LedgerStore | undefined): LedgerStore {
@@ -189,13 +198,13 @@ export function normalizeLedgerStore(raw: LedgerStore | undefined): LedgerStore 
     if (!value || typeof value !== 'object') {
       continue;
     }
-    const entry = value as LedgerEntry;
+    const entry = value as LedgerEntry & { done?: boolean };
     entries[key] = makeLedgerEntry({
       taskId: Number(entry.taskId),
       mappingKey: String(entry.mappingKey ?? ''),
       title: String(entry.title ?? ''),
       description: String(entry.description ?? ''),
-      done: Boolean(entry.done),
+      status: resolveEntryStatus(entry),
       parentTaskId:
         entry.parentTaskId === null || entry.parentTaskId === undefined
           ? null
@@ -208,6 +217,16 @@ export function normalizeLedgerStore(raw: LedgerStore | undefined): LedgerStore 
     });
   }
   return { entries };
+}
+
+function resolveEntryStatus(entry: {
+  status?: unknown;
+  done?: boolean;
+}): TaskStatus {
+  if (isTaskStatus(entry.status)) {
+    return entry.status;
+  }
+  return statusFromDoneFlag(Boolean(entry.done));
 }
 
 function fnv1aHex(input: string): string {

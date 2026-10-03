@@ -1,3 +1,5 @@
+import type { TaskStatus } from '../sync/status';
+
 export interface ParsedTaskNode {
   /** 0-based line index of the checklist item in the source note. */
   lineIndex: number;
@@ -10,10 +12,15 @@ export interface ParsedTaskNode {
   /** Character inside the brackets (` `, `x`, `X`, `/`, …). */
   checkboxChar: string;
   /**
-   * Synced done flag: true for x/X, false for space.
-   * `null` means the checkbox character is not synced for done state.
+   * Legacy done flag: true for x/X, false for space, null for other chars.
+   * Prefer `status` for sync logic.
    */
   done: boolean | null;
+  /**
+   * Synced workflow status: todo `[ ]`, in_progress `[/]`, done `[x]`/`[X]`.
+   * `null` when the checkbox is outside the sync contract (e.g. `[-]`).
+   */
+  status: TaskStatus | null;
   /** Task title (link text when linked, otherwise body without date tokens). */
   title: string;
   /** Vikunja task id when the body is a link to this instance. */

@@ -17,21 +17,42 @@ function task(partial: Partial<VikunjaTask> & Pick<VikunjaTask, 'id' | 'title'>)
   return {
     description: '',
     done: false,
+    percent_done: 0,
     project_id: 1,
     updated: '2026-01-01T00:00:00Z',
     start_date: null,
     end_date: null,
+    labels: [],
     ...partial,
   };
+}
+
+function clientStub(overrides: Record<string, unknown> = {}): VikunjaClient {
+  return {
+    listProjectTasks: vi.fn().mockResolvedValue([]),
+    createTask: vi.fn(),
+    updateTask: vi.fn(),
+    createRelation: vi.fn(),
+    deleteRelation: vi.fn(),
+    listLabels: vi.fn().mockResolvedValue([
+      { id: 101, title: 'ToDo' },
+      { id: 102, title: 'Done' },
+      { id: 103, title: 'In Progress' },
+    ]),
+    createLabel: vi.fn(),
+    addLabelToTask: vi.fn().mockResolvedValue(undefined),
+    removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as VikunjaClient;
 }
 
 describe('ledger hashing', () => {
   it('changes when synced fields change', () => {
     const a = contentHash(
-      contentSnapshot({ title: 'A', description: '', done: false, parentTaskId: null }),
+      contentSnapshot({ title: 'A', description: '', status: 'todo', parentTaskId: null }),
     );
     const b = contentHash(
-      contentSnapshot({ title: 'B', description: '', done: false, parentTaskId: null }),
+      contentSnapshot({ title: 'B', description: '', status: 'todo', parentTaskId: null }),
     );
     expect(a).not.toBe(b);
   });
@@ -113,6 +134,14 @@ describe('syncAllMappings', () => {
       updateTask: vi.fn(),
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const ledger = emptyLedger();
@@ -146,6 +175,7 @@ describe('syncAllMappings', () => {
       start_date: null,
       end_date: null,
     });
+    expect(client.addLabelToTask).toHaveBeenCalledWith(42, 101);
   });
 
   it('creates local tasks for brand-new remote tasks', async () => {
@@ -162,6 +192,14 @@ describe('syncAllMappings', () => {
       updateTask: vi.fn(),
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const ledger = emptyLedger();
@@ -189,7 +227,7 @@ describe('syncAllMappings', () => {
       mappingKey: key,
       title: 'A',
       description: '',
-      done: false,
+      status: 'todo',
       parentTaskId: null,
       vikunjaUpdated: '2026-01-01T00:00:00Z',
     });
@@ -208,6 +246,14 @@ describe('syncAllMappings', () => {
       updateTask,
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
@@ -238,7 +284,7 @@ describe('syncAllMappings', () => {
       mappingKey: key,
       title: 'A',
       description: '',
-      done: false,
+      status: 'todo',
       parentTaskId: null,
       vikunjaUpdated: '2026-01-01T00:00:00Z',
     });
@@ -254,6 +300,14 @@ describe('syncAllMappings', () => {
       updateTask: vi.fn(),
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
@@ -278,7 +332,7 @@ describe('syncAllMappings', () => {
       mappingKey: key,
       title: 'A',
       description: '',
-      done: false,
+      status: 'todo',
       parentTaskId: null,
       vikunjaUpdated: '2026-01-01T00:00:00Z',
     });
@@ -297,6 +351,14 @@ describe('syncAllMappings', () => {
       updateTask,
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
@@ -321,7 +383,7 @@ describe('syncAllMappings', () => {
       mappingKey: key,
       title: 'Gone remote',
       description: '',
-      done: false,
+      status: 'todo',
       parentTaskId: null,
       vikunjaUpdated: '2026-01-01T00:00:00Z',
     });
@@ -335,6 +397,14 @@ describe('syncAllMappings', () => {
       updateTask: vi.fn(),
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
@@ -383,6 +453,14 @@ describe('syncAllMappings', () => {
       updateTask: vi.fn(),
       createRelation,
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const ledger = emptyLedger();
@@ -393,7 +471,7 @@ describe('syncAllMappings', () => {
       mappingKey: key,
       title: 'Parent',
       description: '',
-      done: false,
+      status: 'todo',
       parentTaskId: null,
       vikunjaUpdated: '2026-01-01T00:00:00Z',
     });
@@ -427,6 +505,14 @@ describe('syncAllMappings', () => {
       updateTask: vi.fn(),
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const ledger = emptyLedger();
@@ -484,6 +570,14 @@ describe('syncAllMappings', () => {
       updateTask: vi.fn(),
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const ledger = emptyLedger();
@@ -523,7 +617,7 @@ describe('syncAllMappings', () => {
       mappingKey: key,
       title: 'Meeting',
       description: '',
-      done: false,
+      status: 'todo',
       parentTaskId: null,
       vikunjaUpdated: '2026-01-01T00:00:00Z',
     });
@@ -549,6 +643,14 @@ describe('syncAllMappings', () => {
       updateTask,
       createRelation: vi.fn(),
       deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn().mockResolvedValue(undefined),
+      removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
     } as unknown as VikunjaClient;
 
     const result = await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger, [], {
@@ -574,5 +676,123 @@ describe('syncAllMappings', () => {
     expect(notes.get('Tasks.md')).toContain('[Meeting](https://vikunja.example/tasks/5)');
     expect(notes.get('Tasks.md')).toContain('🛫');
     expect(notes.get('Tasks.md')).toContain('📅');
+  });
+
+  it('pushes in-progress [/] as In Progress label and pulls labels back', async () => {
+    const key = mappingKey('Tasks.md', 1);
+    const ledger = emptyLedger();
+    ledger.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'todo',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+
+    const notes = new Map<string, string>([
+      ['Tasks.md', '- [/] [Work](https://vikunja.example/tasks/5)\n'],
+    ]);
+    const updateTask = vi.fn().mockResolvedValue(
+      task({
+        id: 5,
+        title: 'Work',
+        done: false,
+        labels: [{ id: 101, title: 'ToDo' }],
+        updated: '2026-04-01T00:00:00Z',
+      }),
+    );
+    const removeLabelFromTask = vi.fn().mockResolvedValue(undefined);
+    const addLabelToTask = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      listProjectTasks: vi.fn().mockResolvedValue([
+        task({ id: 5, title: 'Work', labels: [{ id: 101, title: 'ToDo' }] }),
+      ]),
+      createTask: vi.fn(),
+      updateTask,
+      createRelation: vi.fn(),
+      deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask,
+      removeLabelFromTask,
+    } as unknown as VikunjaClient;
+
+    const pushResult = await syncAllMappings(
+      [{ notePath: 'Tasks.md', projectId: 1 }],
+      ledger,
+      [],
+      {
+        baseUrl: 'https://vikunja.example',
+        conflictPolicy: 'prefer-obsidian',
+        client,
+        readNote: async (path) => notes.get(path) ?? '',
+        writeNote: async (path, content) => {
+          notes.set(path, content);
+        },
+      },
+    );
+
+    expect(pushResult.mappings[0]?.counts.pushed).toBe(1);
+    expect(updateTask).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ done: false }),
+    );
+    expect(removeLabelFromTask).toHaveBeenCalledWith(5, 101);
+    expect(addLabelToTask).toHaveBeenCalledWith(5, 103);
+
+    const notes2 = new Map<string, string>([
+      ['Tasks.md', '- [ ] [Work](https://vikunja.example/tasks/5)\n'],
+    ]);
+    const ledger2 = emptyLedger();
+    ledger2.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'todo',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+    const client2 = {
+      listProjectTasks: vi.fn().mockResolvedValue([
+        task({
+          id: 5,
+          title: 'Work',
+          done: false,
+          labels: [{ id: 103, title: 'In Progress' }],
+          updated: '2026-05-01T00:00:00Z',
+        }),
+      ]),
+      createTask: vi.fn(),
+      updateTask: vi.fn(),
+      createRelation: vi.fn(),
+      deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn(),
+      removeLabelFromTask: vi.fn(),
+    } as unknown as VikunjaClient;
+
+    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger2, [], {
+      baseUrl: 'https://vikunja.example',
+      conflictPolicy: 'prefer-vikunja',
+      client: client2,
+      readNote: async (path) => notes2.get(path) ?? '',
+      writeNote: async (path, content) => {
+        notes2.set(path, content);
+      },
+    });
+
+    expect(notes2.get('Tasks.md')).toContain('- [/] [Work]');
   });
 });

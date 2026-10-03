@@ -3,17 +3,25 @@ export interface VikunjaProject {
   title: string;
 }
 
+export interface VikunjaLabel {
+  id: number;
+  title: string;
+  hex_color?: string;
+}
+
 export interface VikunjaTask {
   id: number;
   title: string;
   description: string;
   done: boolean;
+  percent_done: number;
   project_id: number;
   updated: string;
   /** ISO datetime, or null when unset. */
   start_date: string | null;
   /** ISO datetime, or null when unset. */
   end_date: string | null;
+  labels: VikunjaLabel[];
   related_tasks?: Partial<Record<VikunjaRelationKind, VikunjaTask[]>>;
 }
 

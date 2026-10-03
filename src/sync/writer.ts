@@ -1,5 +1,6 @@
 import { taskPageUrl } from '../vikunja/urls';
 import { formatTaskDatesSuffix } from '../note/dates';
+import { checkboxFromStatus } from './status';
 
 export interface RenderableTask {
   indent: string;
@@ -104,8 +105,13 @@ export function applyRootReplacements(
   return result;
 }
 
+export function checkboxCharForStatus(status: import('./status').TaskStatus): string {
+  return checkboxFromStatus(status);
+}
+
+/** @deprecated Use checkboxCharForStatus. */
 export function checkboxCharForDone(done: boolean, previous: string): string {
-  if (previous !== ' ' && previous !== 'x' && previous !== 'X') {
+  if (previous !== ' ' && previous !== 'x' && previous !== 'X' && previous !== '/') {
     return previous;
   }
   return done ? 'x' : ' ';

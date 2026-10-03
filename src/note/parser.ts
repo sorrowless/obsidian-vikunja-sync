@@ -1,6 +1,11 @@
 import { extractTaskIdFromUrl } from '../vikunja/urls';
 import { parseTaskDates } from './dates';
 import type { ParseNoteOptions, ParsedTaskNode } from './types';
+import {
+  doneFlagFromStatus,
+  statusFromCheckbox,
+  type TaskStatus,
+} from '../sync/status';
 
 const TASK_LINE =
   /^([\t >]*)([-*]|[0-9]+\.)\s+\[(.)\]\s+(.*)$/u;
@@ -16,6 +21,7 @@ interface FlatTask {
   listMarker: string;
   checkboxChar: string;
   done: boolean | null;
+  status: TaskStatus | null;
   title: string;
   vikunjaTaskId: number | null;
   startDate: string | null;
@@ -49,6 +55,7 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
       const checkboxChar = taskMatch[3] ?? ' ';
       const body = (taskMatch[4] ?? '').trimEnd();
       const resolved = resolveTaskBody(body, options.vikunjaBaseUrl);
+      const status = statusFromCheckbox(checkboxChar);
 
       tasks.push({
         lineIndex: i,
@@ -56,7 +63,8 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
         indentWidth: indentWidth(indent),
         listMarker,
         checkboxChar,
-        done: doneFromCheckbox(checkboxChar),
+        done: status === null ? null : doneFlagFromStatus(status),
+        status,
         title: resolved.title,
         vikunjaTaskId: resolved.vikunjaTaskId,
         startDate: resolved.startDate,
@@ -131,16 +139,6 @@ function resolveTaskBody(
   };
 }
 
-function doneFromCheckbox(checkboxChar: string): boolean | null {
-  if (checkboxChar === ' ') {
-    return false;
-  }
-  if (checkboxChar === 'x' || checkboxChar === 'X') {
-    return true;
-  }
-  return null;
-}
-
 function assignDescriptions(tasks: FlatTask[], bullets: FlatBullet[]): void {
   for (const bullet of bullets) {
     let owner: FlatTask | null = null;
@@ -171,6 +169,7 @@ function buildTree(tasks: FlatTask[]): ParsedTaskNode[] {
       listMarker: task.listMarker,
       checkboxChar: task.checkboxChar,
       done: task.done,
+      status: task.status,
       title: task.title,
       vikunjaTaskId: task.vikunjaTaskId,
       startDate: task.startDate,

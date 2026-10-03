@@ -72,12 +72,13 @@ After a rewrite, description bullets are ordered before child tasks.
 
 ## Done state
 
-| Checkbox | Meaning |
-| --- | --- |
-| `[ ]` | Not done |
-| `[x]` or `[X]` | Done |
+| Checkbox | Meaning | Vikunja |
+| --- | --- | --- |
+| `[ ]` | To-Do | label `ToDo` |
+| `[/]` | In progress | label `In Progress` |
+| `[x]` or `[X]` | Done | label `Done` |
 
-Other checkbox characters are left alone and are not treated as done-state sync.
+When reading from Vikunja: `Done` → `[x]`, `ToDo` → `[ ]`, any other label(s) → `[/]`. Other checkbox characters (for example `[-]`) are left alone and are not treated as status sync.
 
 ## List markers and indentation
 

@@ -25,10 +25,17 @@ import {
 import { indexRemoteTasks } from './remote';
 import {
   applyRootReplacements,
-  checkboxCharForDone,
+  checkboxCharForStatus,
   renderTask,
   type RenderableTask,
 } from './writer';
+import {
+  checkboxFromStatus,
+  doneFlagFromStatus,
+  statusFromLabels,
+  type TaskStatus,
+} from './status';
+import { applyStatusLabel, LabelCache } from './labels';
 
 export interface SyncMapping {
   notePath: string;
@@ -84,6 +91,7 @@ interface MutableTask {
   listMarker: string;
   checkboxChar: string;
   done: boolean | null;
+  status: TaskStatus | null;
   title: string;
   descriptionLines: string[];
   vikunjaTaskId: number | null;
@@ -197,6 +205,7 @@ async function syncOneMapping(
   const roots = parsed.map((node) => fromParsed(node, null));
 
   const remoteMap = indexRemoteTasks(await options.client.listProjectTasks(mapping.projectId));
+  const labelCache = new LabelCache(options.client);
 
   const localById = new Map<number, MutableTask>();
   const localOrder: MutableTask[] = [];
@@ -223,7 +232,9 @@ async function syncOneMapping(
           id: recovered.taskId,
           title: local.title,
           description: descriptionFromLines(local.descriptionLines),
-          done: local.done ?? recovered.done,
+          done: doneFlagFromStatus(local.status ?? recovered.status),
+          percent_done: 0,
+          labels: [],
           updated: recovered.vikunjaUpdated,
           start_date: local.startDate,
           end_date: local.endDate,
@@ -240,29 +251,38 @@ async function syncOneMapping(
       }
 
       try {
+        const status = local.status ?? 'todo';
         const created = dryRun
           ? fakeCreatedTask(local, mapping.projectId, now)
           : await options.client.createTask(mapping.projectId, {
               title: local.title,
               description: descriptionFromLines(local.descriptionLines),
-              done: local.done ?? false,
+              done: doneFlagFromStatus(status),
               start_date: local.startDate,
               end_date: local.endDate,
             });
         if (parentId !== null && !dryRun) {
           await ensureSubtaskRelation(options.client, created.id, parentId);
         }
+        const labels = await applyStatusLabel(
+          options.client,
+          created,
+          status,
+          labelCache,
+          dryRun,
+        );
+        const createdWithLabels = { ...created, labels, done: doneFlagFromStatus(status) };
         local.vikunjaTaskId = created.id;
         local.dirty = true;
         markRootDirty(local);
         localById.set(created.id, local);
-        writeLedger(workingLedger, key, created, parentId, now);
+        writeLedger(workingLedger, key, createdWithLabels, parentId, now);
         createdPending.push({
           mappingKey: key,
           taskId: created.id,
           title: local.title,
           description: descriptionFromLines(local.descriptionLines),
-          done: local.done ?? false,
+          status,
           parentTaskId: parentId,
           vikunjaUpdated: created.updated || now(),
         });
@@ -325,6 +345,7 @@ async function syncOneMapping(
           errors,
           true,
           dryRun,
+          labelCache,
         );
       } else {
         pullRemote(
@@ -368,6 +389,7 @@ async function syncOneMapping(
         errors,
         false,
         dryRun,
+        labelCache,
       );
       continue;
     }
@@ -402,6 +424,7 @@ async function syncOneMapping(
         errors,
         true,
         dryRun,
+        labelCache,
       );
     } else {
       pullRemote(
@@ -533,30 +556,24 @@ async function pushLocal(
   errors: string[],
   isConflict: boolean,
   dryRun: boolean,
+  labelCache: LabelCache,
 ): Promise<void> {
   try {
-    const update: {
-      title: string;
-      description: string;
-      done?: boolean;
-      start_date: string | null;
-      end_date: string | null;
-    } = {
+    const status = local.status ?? statusFromLabels(remote.labels);
+    const update = {
       title: local.title,
       description: descriptionFromLines(local.descriptionLines),
+      done: doneFlagFromStatus(status),
       start_date: local.startDate,
       end_date: local.endDate,
     };
-    if (local.done !== null) {
-      update.done = local.done;
-    }
 
     const updated = dryRun
       ? {
           ...remote,
           title: update.title,
           description: update.description,
-          done: update.done ?? remote.done,
+          done: update.done,
           start_date: local.startDate,
           end_date: local.endDate,
           updated: now(),
@@ -567,6 +584,14 @@ async function pushLocal(
       await syncParentRelation(options.client, remote.id, parentId, currentParentId);
     }
 
+    const labels = await applyStatusLabel(
+      options.client,
+      { id: updated.id, labels: updated.labels ?? remote.labels },
+      status,
+      labelCache,
+      dryRun,
+    );
+
     writeLedger(
       ledger,
       key,
@@ -574,7 +599,9 @@ async function pushLocal(
         id: updated.id,
         title: local.title,
         description: update.description,
-        done: update.done ?? remote.done,
+        done: update.done,
+        percent_done: updated.percent_done ?? 0,
+        labels,
         updated: updated.updated || now(),
         start_date: local.startDate,
         end_date: local.endDate,
@@ -618,10 +645,10 @@ function pullRemote(
 ): void {
   local.title = remote.title;
   local.descriptionLines = descriptionToLines(remote.description);
-  if (local.done !== null) {
-    local.done = remote.done;
-    local.checkboxChar = checkboxCharForDone(remote.done, local.checkboxChar);
-  }
+  const status = statusFromLabels(remote.labels);
+  local.status = status;
+  local.done = doneFlagFromStatus(status);
+  local.checkboxChar = checkboxCharForStatus(status);
   local.startDate = remote.start_date;
   local.endDate = remote.end_date;
   local.vikunjaTaskId = remote.id;
@@ -706,15 +733,18 @@ function fakeCreatedTask(
   projectId: number,
   now: () => string,
 ): VikunjaTask {
+  const status = local.status ?? 'todo';
   return {
     id: -Math.floor(Math.random() * 1_000_000) - 1,
     title: local.title,
     description: descriptionFromLines(local.descriptionLines),
-    done: local.done ?? false,
+    done: doneFlagFromStatus(status),
+    percent_done: 0,
     project_id: projectId,
     updated: now(),
     start_date: local.startDate,
     end_date: local.endDate,
+    labels: [],
   };
 }
 
@@ -723,7 +753,15 @@ function writeLedger(
   key: string,
   task: Pick<
     VikunjaTask,
-    'id' | 'title' | 'description' | 'done' | 'updated' | 'start_date' | 'end_date'
+    | 'id'
+    | 'title'
+    | 'description'
+    | 'done'
+    | 'percent_done'
+    | 'labels'
+    | 'updated'
+    | 'start_date'
+    | 'end_date'
   >,
   parentTaskId: number | null,
   now: () => string,
@@ -733,7 +771,7 @@ function writeLedger(
     mappingKey: key,
     title: task.title,
     description: normalizeDescription(task.description),
-    done: task.done,
+    status: statusFromLabels(task.labels),
     parentTaskId,
     startDate: task.start_date ?? null,
     endDate: task.end_date ?? null,
@@ -751,7 +789,7 @@ function localSnapshot(
   return contentSnapshot({
     title: local.title,
     description: descriptionFromLines(local.descriptionLines),
-    done: local.done === null ? (entry?.done ?? false) : local.done,
+    status: local.status ?? entry?.status ?? 'todo',
     parentTaskId: parentId,
     startDate: local.startDate,
     endDate: local.endDate,
@@ -762,7 +800,7 @@ function remoteSnapshot(task: VikunjaTask, parentTaskId: number | null) {
   return contentSnapshot({
     title: task.title,
     description: normalizeDescription(task.description ?? ''),
-    done: task.done,
+    status: statusFromLabels(task.labels),
     parentTaskId,
     startDate: task.start_date ?? null,
     endDate: task.end_date ?? null,
@@ -777,6 +815,7 @@ function fromParsed(node: ParsedTaskNode, parent: MutableTask | null): MutableTa
     listMarker: node.listMarker,
     checkboxChar: node.checkboxChar,
     done: node.done,
+    status: node.status,
     title: node.title,
     descriptionLines: [...node.descriptionLines],
     vikunjaTaskId: node.vikunjaTaskId,
@@ -792,13 +831,15 @@ function fromParsed(node: ParsedTaskNode, parent: MutableTask | null): MutableTa
 }
 
 function createLocalNode(task: VikunjaTask): MutableTask {
+  const status = statusFromLabels(task.labels);
   return {
     lineIndex: null,
     endLineIndex: null,
     indent: '',
     listMarker: '-',
-    checkboxChar: task.done ? 'x' : ' ',
-    done: task.done,
+    checkboxChar: checkboxFromStatus(status),
+    done: doneFlagFromStatus(status),
+    status,
     title: task.title,
     descriptionLines: descriptionToLines(task.description),
     vikunjaTaskId: task.id,
