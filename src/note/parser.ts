@@ -1,5 +1,6 @@
 import { extractTaskIdFromUrl } from '../vikunja/urls';
 import { parseTaskDates } from './dates';
+import { parseTaskTags } from './tags';
 import type { ParseNoteOptions, ParsedTaskNode } from './types';
 import {
   doneFlagFromStatus,
@@ -26,6 +27,7 @@ interface FlatTask {
   vikunjaTaskId: number | null;
   startDate: string | null;
   endDate: string | null;
+  tags: string[];
   descriptionLines: string[];
   descriptionLineIndices: number[];
 }
@@ -69,6 +71,7 @@ export function parseNoteTasks(markdown: string, options: ParseNoteOptions): Par
         vikunjaTaskId: resolved.vikunjaTaskId,
         startDate: resolved.startDate,
         endDate: resolved.endDate,
+        tags: resolved.tags,
         descriptionLines: [],
         descriptionLineIndices: [],
       });
@@ -115,6 +118,7 @@ function resolveTaskBody(
   vikunjaTaskId: number | null;
   startDate: string | null;
   endDate: string | null;
+  tags: string[];
 } {
   const linkMatch = body.match(LINK_AT_START);
   if (linkMatch) {
@@ -122,20 +126,24 @@ function resolveTaskBody(
     const url = linkMatch[2] ?? '';
     const trailing = linkMatch[3] ?? '';
     const dates = parseTaskDates(trailing);
+    const tagParsed = parseTaskTags(dates.remainder);
     return {
       title: linkTitle,
       vikunjaTaskId: extractTaskIdFromUrl(url, vikunjaBaseUrl),
       startDate: dates.startDate,
       endDate: dates.endDate,
+      tags: tagParsed.tags,
     };
   }
 
   const dates = parseTaskDates(body);
+  const tagParsed = parseTaskTags(dates.remainder);
   return {
-    title: dates.remainder,
+    title: tagParsed.remainder,
     vikunjaTaskId: null,
     startDate: dates.startDate,
     endDate: dates.endDate,
+    tags: tagParsed.tags,
   };
 }
 
@@ -174,6 +182,7 @@ function buildTree(tasks: FlatTask[]): ParsedTaskNode[] {
       vikunjaTaskId: task.vikunjaTaskId,
       startDate: task.startDate,
       endDate: task.endDate,
+      tags: [...task.tags],
       descriptionLines: [...task.descriptionLines],
       descriptionLineIndices: [...task.descriptionLineIndices],
       children: [],

@@ -1,18 +1,30 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type VikunjaSyncPlugin from './main';
 import {
+  createEmptyAssigneeMapping,
   createEmptyMapping,
+  isAssigneeMappingBlank,
+  isAssigneeMappingComplete,
   isMappingBlank,
   isMappingComplete,
   normalizeSyncIntervalValue,
+  suggestObsidianTagFromUsername,
   type ConflictPolicy,
   type SyncIntervalUnit,
 } from './settings';
 import { NoteSuggestModal } from './vault/note-suggest-modal';
 import { resolveMarkdownFile } from './vault/resolve-note';
+import { formatUserLabel } from './vikunja/client';
+import type { VikunjaUser } from './vikunja/types';
+
+type UsersLoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
 export class VikunjaSyncSettingTab extends PluginSettingTab {
   plugin: VikunjaSyncPlugin;
+
+  private usersState: UsersLoadState = 'idle';
+  private discoveredUsers: VikunjaUser[] = [];
+  private usersError: string | null = null;
 
   constructor(app: App, plugin: VikunjaSyncPlugin) {
     super(app, plugin);
@@ -30,6 +42,7 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
 
     this.renderConnectionSection(containerEl);
     this.renderMappingsSection(containerEl);
+    this.renderAssigneeMappingsSection(containerEl);
     this.renderConflictSection(containerEl);
     this.renderTriggersSection(containerEl);
     this.renderMaintenanceSection(containerEl);
@@ -182,6 +195,185 @@ export class VikunjaSyncSettingTab extends PluginSettingTab {
         this.display();
       }),
     );
+  }
+
+  private renderAssigneeMappingsSection(containerEl: HTMLElement): void {
+    containerEl.createEl('h3', { text: 'Assignee ↔ tag mappings' });
+    containerEl.createEl('p', {
+      cls: 'setting-item-description',
+      text: 'Pick a Vikunja user (loaded from your mapped projects) and an Obsidian tag (e.g. #alice). Only mapped assignees sync on open tasks; when both sides are Done, assignees are left alone. On conflict Obsidian wins.',
+    });
+
+    if (!Array.isArray(this.plugin.settings.assigneeMappings)) {
+      this.plugin.settings.assigneeMappings = [];
+    }
+
+    this.ensureAssigneeUsersLoaded();
+
+    const usersSetting = new Setting(containerEl)
+      .setName('Vikunja users')
+      .setDesc(this.assigneeUsersStatusText());
+
+    usersSetting.addButton((button) =>
+      button
+        .setButtonText(this.usersState === 'loading' ? 'Loading…' : 'Refresh users')
+        .setDisabled(this.usersState === 'loading')
+        .onClick(() => {
+          void this.loadAssigneeUsers(true);
+        }),
+    );
+
+    this.plugin.settings.assigneeMappings.forEach((mapping, index) => {
+      const setting = new Setting(containerEl)
+        .setName(`Assignee ${index + 1}`)
+        .setDesc('Vikunja user and Obsidian tag (with or without #)');
+
+      setting.addDropdown((dropdown) => {
+        dropdown.addOption('', 'Select Vikunja user…');
+        const knownIds = new Set<number>();
+        for (const user of this.discoveredUsers) {
+          knownIds.add(user.id);
+          dropdown.addOption(String(user.id), formatUserLabel(user));
+        }
+        // Keep a previously saved user visible even if discovery missed them.
+        if (mapping.vikunjaUserId > 0 && !knownIds.has(mapping.vikunjaUserId)) {
+          const fallback =
+            mapping.label.trim() ||
+            `User ${mapping.vikunjaUserId}`;
+          dropdown.addOption(String(mapping.vikunjaUserId), `${fallback} (saved)`);
+        }
+        dropdown.setValue(
+          mapping.vikunjaUserId > 0 ? String(mapping.vikunjaUserId) : '',
+        );
+        dropdown.onChange(async (value) => {
+          const current = this.plugin.settings.assigneeMappings[index];
+          if (!current) {
+            return;
+          }
+          const parsed = Number.parseInt(value, 10);
+          const userId = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+          current.vikunjaUserId = userId;
+          const user = this.discoveredUsers.find((item) => item.id === userId);
+          if (user) {
+            current.label = formatUserLabel(user);
+            if (!current.obsidianTag.trim()) {
+              current.obsidianTag = suggestObsidianTagFromUsername(user.username);
+            }
+          } else if (userId === 0) {
+            current.label = '';
+          }
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
+
+      setting
+        .addText((text) =>
+          text
+            .setPlaceholder('#alice')
+            .setValue(mapping.obsidianTag ? `#${mapping.obsidianTag}` : '')
+            .onChange(async (value) => {
+              const current = this.plugin.settings.assigneeMappings[index];
+              if (!current) {
+                return;
+              }
+              current.obsidianTag = value;
+              await this.plugin.saveSettings();
+            }),
+        )
+        .addExtraButton((button) => {
+          button
+            .setIcon('trash')
+            .setTooltip('Remove assignee mapping')
+            .onClick(async () => {
+              this.plugin.settings.assigneeMappings.splice(index, 1);
+              await this.plugin.saveSettings();
+              this.display();
+            });
+        });
+
+      if (!isAssigneeMappingBlank(mapping) && !isAssigneeMappingComplete(mapping)) {
+        containerEl.createEl('p', {
+          cls: 'setting-item-description',
+          text: `Assignee ${index + 1} is incomplete — pick a Vikunja user and an Obsidian tag.`,
+        });
+      }
+    });
+
+    new Setting(containerEl).addButton((button) =>
+      button.setButtonText('Add assignee mapping').onClick(async () => {
+        this.plugin.settings.assigneeMappings.push(createEmptyAssigneeMapping());
+        await this.plugin.saveSettings();
+        this.display();
+      }),
+    );
+  }
+
+  private assigneeUsersStatusText(): string {
+    if (this.usersState === 'loading') {
+      return 'Loading users from Vikunja…';
+    }
+    if (this.usersState === 'error') {
+      return this.usersError
+        ? `Could not load users: ${this.usersError}`
+        : 'Could not load users from Vikunja.';
+    }
+    if (this.usersState === 'loaded') {
+      const count = this.discoveredUsers.length;
+      if (count === 0) {
+        return 'No users found. Check the API token and note ↔ project mappings, then refresh.';
+      }
+      return `${count} user${count === 1 ? '' : 's'} loaded from Vikunja (mapped projects when set, otherwise all projects).`;
+    }
+    return 'Users load automatically when URL and token are set. Use Refresh to reload.';
+  }
+
+  private ensureAssigneeUsersLoaded(): void {
+    if (this.usersState !== 'idle') {
+      return;
+    }
+    if (
+      !this.plugin.settings.vikunjaBaseUrl.trim() ||
+      !this.plugin.settings.vikunjaApiToken.trim()
+    ) {
+      return;
+    }
+    void this.loadAssigneeUsers(false);
+  }
+
+  private async loadAssigneeUsers(force: boolean): Promise<void> {
+    if (this.usersState === 'loading') {
+      return;
+    }
+    if (!force && this.usersState === 'loaded') {
+      return;
+    }
+    if (
+      !this.plugin.settings.vikunjaBaseUrl.trim() ||
+      !this.plugin.settings.vikunjaApiToken.trim()
+    ) {
+      this.usersState = 'error';
+      this.usersError = 'Set Vikunja base URL and API token first.';
+      this.discoveredUsers = [];
+      this.display();
+      return;
+    }
+
+    this.usersState = 'loading';
+    this.usersError = null;
+    this.display();
+
+    const result = await this.plugin.discoverAssigneeUsers();
+    if (result.ok) {
+      this.discoveredUsers = result.users;
+      this.usersState = 'loaded';
+      this.usersError = null;
+    } else {
+      this.discoveredUsers = [];
+      this.usersState = 'error';
+      this.usersError = result.message;
+    }
+    this.display();
   }
 
   private renderConflictSection(containerEl: HTMLElement): void {

@@ -34,7 +34,7 @@ describe('applyStatusLabel', () => {
     expect(labels).toEqual([{ id: 102, title: 'Done' }]);
   });
 
-  it('replaces Done+review with a single Done label', async () => {
+  it('keeps Done and only removes extras like review', async () => {
     const removeLabelFromTask = vi.fn().mockResolvedValue(undefined);
     const addLabelToTask = vi.fn().mockResolvedValue(undefined);
     const client = {
@@ -62,8 +62,55 @@ describe('applyStatusLabel', () => {
     );
 
     expect(removeLabelFromTask).toHaveBeenCalledWith(9, 200);
-    expect(removeLabelFromTask).toHaveBeenCalledWith(9, 102);
-    expect(addLabelToTask).toHaveBeenCalledWith(9, 102);
+    expect(removeLabelFromTask).not.toHaveBeenCalledWith(9, 102);
+    expect(addLabelToTask).not.toHaveBeenCalled();
     expect(labels).toEqual([{ id: 102, title: 'Done' }]);
+  });
+
+  it('treats duplicate-label errors as success when current labels were stale', async () => {
+    const addLabelToTask = vi
+      .fn()
+      .mockRejectedValue(new Error('This label already exists on the task.'));
+    const client = {
+      listLabels: vi.fn().mockResolvedValue([{ id: 101, title: 'ToDo' }]),
+      createLabel: vi.fn(),
+      addLabelToTask,
+      removeLabelFromTask: vi.fn(),
+    } as unknown as VikunjaClient;
+
+    const labels = await applyStatusLabel(
+      client,
+      // Stale: update payloads often omit labels even though ToDo is present.
+      { id: 36, labels: [] },
+      'todo',
+      new LabelCache(client),
+      false,
+    );
+
+    expect(addLabelToTask).toHaveBeenCalledWith(36, 101);
+    expect(labels).toEqual([{ id: 101, title: 'ToDo' }]);
+  });
+
+  it('skips add when the desired label is already the only label', async () => {
+    const addLabelToTask = vi.fn();
+    const removeLabelFromTask = vi.fn();
+    const client = {
+      listLabels: vi.fn().mockResolvedValue([{ id: 101, title: 'ToDo' }]),
+      createLabel: vi.fn(),
+      addLabelToTask,
+      removeLabelFromTask,
+    } as unknown as VikunjaClient;
+
+    const labels = await applyStatusLabel(
+      client,
+      { id: 36, labels: [{ id: 101, title: 'ToDo' }] },
+      'todo',
+      new LabelCache(client),
+      false,
+    );
+
+    expect(addLabelToTask).not.toHaveBeenCalled();
+    expect(removeLabelFromTask).not.toHaveBeenCalled();
+    expect(labels).toEqual([{ id: 101, title: 'ToDo' }]);
   });
 });

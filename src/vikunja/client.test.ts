@@ -109,6 +109,90 @@ describe('VikunjaClient request shaping', () => {
     });
   });
 
+  it('lists project users and merges users across projects', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse([
+          { id: 3, username: 'alice', name: 'Alice' },
+          { id: 7, username: 'bob' },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse([
+          { id: 7, username: 'bob' },
+          { id: 9, username: 'carol', name: 'Carol' },
+        ]),
+      );
+
+    const client = new VikunjaClient({
+      baseUrl: 'https://vikunja.example',
+      token: 'tok',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const users = await client.listUsersForProjects([1, 2]);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      'https://vikunja.example/api/v1/projects/1/projectusers',
+    );
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(
+      'https://vikunja.example/api/v1/projects/2/projectusers',
+    );
+    expect(users).toHaveLength(3);
+    expect(new Set(users.map((user) => user.id))).toEqual(new Set([3, 7, 9]));
+    expect(users.find((user) => user.id === 3)).toMatchObject({
+      username: 'alice',
+      name: 'Alice',
+    });
+  });
+
+  it('parses assignees on listed tasks and shapes assignee requests', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          [
+            {
+              id: 5,
+              title: 'Parent',
+              description: '',
+              done: false,
+              project_id: 1,
+              updated: '2026-01-01T00:00:00Z',
+              assignees: [{ id: 3, username: 'alice', name: 'Alice' }],
+            },
+          ],
+          { headers: { 'x-pagination-total-pages': '1' } },
+        ),
+      )
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse(null));
+
+    const client = new VikunjaClient({
+      baseUrl: 'https://vikunja.example',
+      token: 'tok',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const tasks = await client.listProjectTasks(1);
+    expect(tasks[0]?.assignees).toEqual([{ id: 3, username: 'alice', name: 'Alice' }]);
+
+    await client.addAssignee(5, 3);
+    expect(String(fetchImpl.mock.calls[1]?.[0])).toBe(
+      'https://vikunja.example/api/v1/tasks/5/assignees',
+    );
+    expect((fetchImpl.mock.calls[1]?.[1] as RequestInit).method).toBe('PUT');
+    expect(JSON.parse(String((fetchImpl.mock.calls[1]?.[1] as RequestInit).body))).toEqual({
+      user_id: 3,
+    });
+
+    await client.removeAssignee(5, 3);
+    expect(String(fetchImpl.mock.calls[2]?.[0])).toBe(
+      'https://vikunja.example/api/v1/tasks/5/assignees/3',
+    );
+    expect((fetchImpl.mock.calls[2]?.[1] as RequestInit).method).toBe('DELETE');
+  });
+
   it('creates and deletes relations with expected paths', async () => {
     const fetchImpl = vi
       .fn()

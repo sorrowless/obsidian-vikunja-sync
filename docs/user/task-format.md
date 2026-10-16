@@ -39,6 +39,16 @@ Unlinked tasks may use the same markers:
 - [ ] Draft proposal 🛫 2026-10-05 📅 2026-10-06
 ```
 
+## Assignee tags
+
+A single mapped assignee is represented as an ordinary Obsidian tag **after** the date markers:
+
+```markdown
+- [ ] [Title](https://vikunja.example/tasks/42) 🛫 2026-10-02 10:00 📅 2026-10-02 11:00 #alice
+```
+
+Configure Vikunja user id ↔ tag pairs in settings. Only mapped tags sync; other `#tags` on the line are preserved. At most one mapped assignee tag is managed per task.
+
 ## Description
 
 Description lines are indented bullets **without** checkboxes, directly under the task:

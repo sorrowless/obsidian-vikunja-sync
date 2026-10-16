@@ -1,12 +1,19 @@
 import { parseNoteTasks } from '../note/parser';
 import type { ParsedTaskNode } from '../note/types';
-import type { ConflictPolicy } from '../settings';
+import type { AssigneeMapping, ConflictPolicy } from '../settings';
+import { tagsForWrite } from '../note/tags';
 import type { VikunjaClient } from '../vikunja/client';
 import type { VikunjaTask } from '../vikunja/types';
 import {
   emptyActions,
   type SyncActionDetail,
 } from './actions';
+import {
+  mappedTagNameSet,
+  reconcileAssignee,
+  resolveLocalMappedTag,
+  tagsFromRemoteAssignee,
+} from './assignee';
 import {
   cloneLedger,
   commitMappingLedger,
@@ -51,6 +58,8 @@ export interface SyncEngineOptions {
   /** When true, list remotes but do not mutate Vikunja, notes, or the real ledger. */
   dryRun?: boolean;
   now?: () => string;
+  /** Vikunja user id ↔ Obsidian `#tag` mappings for assignee sync. */
+  assigneeMappings?: AssigneeMapping[];
 }
 
 export interface MappingSyncCounts {
@@ -97,6 +106,7 @@ interface MutableTask {
   vikunjaTaskId: number | null;
   startDate: string | null;
   endDate: string | null;
+  tags: string[];
   children: MutableTask[];
   parent: MutableTask | null;
   isNew: boolean;
@@ -206,6 +216,7 @@ async function syncOneMapping(
 
   const remoteMap = indexRemoteTasks(await options.client.listProjectTasks(mapping.projectId));
   const labelCache = new LabelCache(options.client);
+  const assigneeMappings = options.assigneeMappings ?? [];
 
   const localById = new Map<number, MutableTask>();
   const localOrder: MutableTask[] = [];
@@ -217,6 +228,34 @@ async function syncOneMapping(
   });
 
   const mappingPending = pendingLinks.filter((item) => item.mappingKey === key);
+
+  const syncAssigneeFor = async (
+    local: MutableTask,
+    remoteTask: VikunjaTask,
+  ): Promise<void> => {
+    try {
+      const result = await reconcileAssignee({
+        client: options.client,
+        taskTitle: local.title,
+        taskId: remoteTask.id,
+        localStatus: local.status,
+        remoteStatus: statusFromLabels(remoteTask.labels),
+        localTags: local.tags,
+        remoteAssignees: remoteTask.assignees ?? [],
+        mappings: assigneeMappings,
+        dryRun,
+      });
+      actions.push(...result.actions);
+      if (result.tags) {
+        local.tags = result.tags;
+        local.dirty = true;
+        markRootDirty(local);
+      }
+      remoteTask.assignees = result.assignees;
+    } catch (error) {
+      errors.push(`Assignee sync "${local.title}" (#${remoteTask.id}): ${errorMessage(error)}`);
+    }
+  };
 
   for (const local of localOrder) {
     const parentId = local.parent?.vikunjaTaskId ?? null;
@@ -247,6 +286,10 @@ async function syncOneMapping(
           taskId: recovered.taskId,
           detail: 'relink previously created Vikunja task that was not yet written into the note',
         });
+        const recoveredRemote = remoteMap.get(recovered.taskId);
+        if (recoveredRemote) {
+          await syncAssigneeFor(local, recoveredRemote.task);
+        }
         continue;
       }
 
@@ -271,7 +314,12 @@ async function syncOneMapping(
           labelCache,
           dryRun,
         );
-        const createdWithLabels = { ...created, labels, done: doneFlagFromStatus(status) };
+        const createdWithLabels: VikunjaTask = {
+          ...created,
+          labels,
+          done: doneFlagFromStatus(status),
+          assignees: created.assignees ?? [],
+        };
         local.vikunjaTaskId = created.id;
         local.dirty = true;
         markRootDirty(local);
@@ -293,6 +341,7 @@ async function syncOneMapping(
           taskId: created.id > 0 ? created.id : null,
           detail: 'unlinked checklist item in the note',
         });
+        await syncAssigneeFor(local, createdWithLabels);
       } catch (error) {
         errors.push(`Create remote "${local.title}": ${errorMessage(error)}`);
       }
@@ -360,6 +409,7 @@ async function syncOneMapping(
           true,
         );
       }
+      await syncAssigneeFor(local, remote.task);
       continue;
     }
 
@@ -371,6 +421,7 @@ async function syncOneMapping(
       entry.unresolved = false;
       counts.unchanged += 1;
       actions.push({ kind: 'unchanged', title: local.title, taskId });
+      await syncAssigneeFor(local, remote.task);
       continue;
     }
 
@@ -391,6 +442,7 @@ async function syncOneMapping(
         dryRun,
         labelCache,
       );
+      await syncAssigneeFor(local, remote.task);
       continue;
     }
 
@@ -406,6 +458,7 @@ async function syncOneMapping(
         actions,
         false,
       );
+      await syncAssigneeFor(local, remote.task);
       continue;
     }
 
@@ -439,6 +492,7 @@ async function syncOneMapping(
         true,
       );
     }
+    await syncAssigneeFor(local, remote.task);
   }
 
   const remotes = [...remoteMap.values()].sort((a, b) => {
@@ -465,7 +519,7 @@ async function syncOneMapping(
       continue;
     }
 
-    const created = createLocalNode(remote.task);
+    const created = createLocalNode(remote.task, assigneeMappings);
     const parentLocal =
       remote.parentTaskId !== null ? localById.get(remote.parentTaskId) ?? null : null;
     if (parentLocal) {
@@ -486,9 +540,10 @@ async function syncOneMapping(
       taskId: remote.task.id,
       detail: 'exists in Vikunja and was never synced to this note',
     });
+    await syncAssigneeFor(created, remote.task);
   }
 
-  const nextMarkdown = writeMarkdown(markdown, roots, options.baseUrl);
+  const nextMarkdown = writeMarkdown(markdown, roots, options.baseUrl, assigneeMappings);
   const noteChanged = nextMarkdown !== markdown;
 
   if (noteChanged) {
@@ -584,9 +639,15 @@ async function pushLocal(
       await syncParentRelation(options.client, remote.id, parentId, currentParentId);
     }
 
+    // POST /tasks/{id} often returns `labels: []` even when labels remain;
+    // prefer the pre-update remote list when the update payload is empty.
+    const labelsForApply =
+      Array.isArray(updated.labels) && updated.labels.length > 0
+        ? updated.labels
+        : remote.labels;
     const labels = await applyStatusLabel(
       options.client,
-      { id: updated.id, labels: updated.labels ?? remote.labels },
+      { id: updated.id, labels: labelsForApply },
       status,
       labelCache,
       dryRun,
@@ -745,6 +806,7 @@ function fakeCreatedTask(
     start_date: local.startDate,
     end_date: local.endDate,
     labels: [],
+    assignees: [],
   };
 }
 
@@ -821,6 +883,7 @@ function fromParsed(node: ParsedTaskNode, parent: MutableTask | null): MutableTa
     vikunjaTaskId: node.vikunjaTaskId,
     startDate: node.startDate,
     endDate: node.endDate,
+    tags: [...node.tags],
     children: [],
     parent,
     isNew: false,
@@ -830,7 +893,10 @@ function fromParsed(node: ParsedTaskNode, parent: MutableTask | null): MutableTa
   return mutable;
 }
 
-function createLocalNode(task: VikunjaTask): MutableTask {
+function createLocalNode(
+  task: VikunjaTask,
+  assigneeMappings: readonly AssigneeMapping[],
+): MutableTask {
   const status = statusFromLabels(task.labels);
   return {
     lineIndex: null,
@@ -845,6 +911,7 @@ function createLocalNode(task: VikunjaTask): MutableTask {
     vikunjaTaskId: task.id,
     startDate: task.start_date ?? null,
     endDate: task.end_date ?? null,
+    tags: tagsFromRemoteAssignee([], task, assigneeMappings),
     children: [],
     parent: null,
     isNew: true,
@@ -872,7 +939,13 @@ function markRootDirty(task: MutableTask): void {
   cursor.dirty = true;
 }
 
-function toRenderable(task: MutableTask): RenderableTask {
+function toRenderable(
+  task: MutableTask,
+  assigneeMappings: readonly AssigneeMapping[],
+): RenderableTask {
+  const mappedNames = mappedTagNameSet(assigneeMappings);
+  const assigneeTag = resolveLocalMappedTag(task.tags, assigneeMappings);
+  const writeTags = tagsForWrite(task.tags, mappedNames, assigneeTag);
   return {
     indent: task.indent,
     listMarker: task.listMarker,
@@ -881,12 +954,18 @@ function toRenderable(task: MutableTask): RenderableTask {
     vikunjaTaskId: task.vikunjaTaskId,
     startDate: task.startDate,
     endDate: task.endDate,
+    tags: writeTags,
     descriptionLines: task.descriptionLines,
-    children: task.children.map(toRenderable),
+    children: task.children.map((child) => toRenderable(child, assigneeMappings)),
   };
 }
 
-function writeMarkdown(markdown: string, roots: MutableTask[], baseUrl: string): string {
+function writeMarkdown(
+  markdown: string,
+  roots: MutableTask[],
+  baseUrl: string,
+  assigneeMappings: readonly AssigneeMapping[],
+): string {
   const replacements: Array<{
     lineIndex: number | null;
     endLineIndex: number | null;
@@ -898,7 +977,7 @@ function writeMarkdown(markdown: string, roots: MutableTask[], baseUrl: string):
       replacements.push({
         lineIndex: null,
         endLineIndex: null,
-        rendered: renderTask(toRenderable(root), baseUrl),
+        rendered: renderTask(toRenderable(root, assigneeMappings), baseUrl),
       });
       continue;
     }
@@ -906,7 +985,7 @@ function writeMarkdown(markdown: string, roots: MutableTask[], baseUrl: string):
       replacements.push({
         lineIndex: root.lineIndex,
         endLineIndex: root.endLineIndex,
-        rendered: renderTask(toRenderable(root), baseUrl),
+        rendered: renderTask(toRenderable(root, assigneeMappings), baseUrl),
       });
     }
   }

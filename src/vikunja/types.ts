@@ -9,6 +9,12 @@ export interface VikunjaLabel {
   hex_color?: string;
 }
 
+export interface VikunjaUser {
+  id: number;
+  username: string;
+  name?: string;
+}
+
 export interface VikunjaTask {
   id: number;
   title: string;
@@ -22,6 +28,7 @@ export interface VikunjaTask {
   /** ISO datetime, or null when unset. */
   end_date: string | null;
   labels: VikunjaLabel[];
+  assignees: VikunjaUser[];
   related_tasks?: Partial<Record<VikunjaRelationKind, VikunjaTask[]>>;
 }
 

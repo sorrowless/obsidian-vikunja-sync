@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SETTINGS,
+  createEmptyAssigneeMapping,
   createEmptyMapping,
+  findAssigneeMappingByTag,
+  findAssigneeMappingByUserId,
+  isAssigneeMappingBlank,
+  isAssigneeMappingComplete,
   isMappingBlank,
   isMappingComplete,
   normalizeMappingPath,
+  normalizeObsidianTag,
   normalizeSyncIntervalValue,
+  prepareAssigneeMappingsForSave,
   prepareMappingsForSave,
+  suggestObsidianTagFromUsername,
   syncIntervalToMilliseconds,
 } from './settings';
 
@@ -17,6 +25,49 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.syncIntervalEnabled).toBe(false);
     expect(DEFAULT_SETTINGS.syncOnFileChange).toBe(false);
     expect(DEFAULT_SETTINGS.mappings).toEqual([]);
+    expect(DEFAULT_SETTINGS.assigneeMappings).toEqual([]);
+  });
+});
+
+describe('assignee mapping helpers', () => {
+  it('strips leading # and trims tags', () => {
+    expect(normalizeObsidianTag('  #Alice  ')).toBe('Alice');
+    expect(normalizeObsidianTag('##bob')).toBe('bob');
+  });
+
+  it('suggests a lowercase tag from a Vikunja username', () => {
+    expect(suggestObsidianTagFromUsername('Alice')).toBe('alice');
+    expect(suggestObsidianTagFromUsername('Jane Doe')).toBe('jane-doe');
+  });
+
+  it('detects blank and complete assignee rows', () => {
+    expect(isAssigneeMappingBlank(createEmptyAssigneeMapping())).toBe(true);
+    expect(
+      isAssigneeMappingComplete({ vikunjaUserId: 3, label: 'Alice', obsidianTag: 'alice' }),
+    ).toBe(true);
+    expect(
+      isAssigneeMappingComplete({ vikunjaUserId: 0, label: '', obsidianTag: 'alice' }),
+    ).toBe(false);
+  });
+
+  it('looks up mappings by tag (case-insensitive) and user id', () => {
+    const mappings = [
+      { vikunjaUserId: 3, label: 'Alice', obsidianTag: 'alice' },
+      { vikunjaUserId: 7, label: 'Bob', obsidianTag: 'bob' },
+    ];
+    expect(findAssigneeMappingByTag(mappings, '#Alice')?.vikunjaUserId).toBe(3);
+    expect(findAssigneeMappingByUserId(mappings, 7)?.obsidianTag).toBe('bob');
+    expect(findAssigneeMappingByTag(mappings, 'carol')).toBeNull();
+  });
+
+  it('normalizes assignee mappings in place', () => {
+    const mapping = { vikunjaUserId: 3.9, label: '  Alice  ', obsidianTag: '#Alice' };
+    const mappings = [mapping];
+    prepareAssigneeMappingsForSave(mappings);
+    expect(mappings[0]).toBe(mapping);
+    expect(mapping.vikunjaUserId).toBe(3);
+    expect(mapping.label).toBe('Alice');
+    expect(mapping.obsidianTag).toBe('Alice');
   });
 });
 

@@ -23,6 +23,7 @@ function task(partial: Partial<VikunjaTask> & Pick<VikunjaTask, 'id' | 'title'>)
     start_date: null,
     end_date: null,
     labels: [],
+    assignees: [],
     ...partial,
   };
 }
@@ -42,6 +43,8 @@ function clientStub(overrides: Record<string, unknown> = {}): VikunjaClient {
     createLabel: vi.fn(),
     addLabelToTask: vi.fn().mockResolvedValue(undefined),
     removeLabelFromTask: vi.fn().mockResolvedValue(undefined),
+    addAssignee: vi.fn().mockResolvedValue(undefined),
+    removeAssignee: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as VikunjaClient;
 }
@@ -108,6 +111,28 @@ describe('writer', () => {
         '    - [x] [Child](https://vikunja.example/tasks/2)',
       ].join('\n'),
     );
+  });
+
+  it('renders tags after date suffix', () => {
+    const markdown = renderTaskForest(
+      [
+        {
+          indent: '',
+          listMarker: '-',
+          checkboxChar: ' ',
+          title: 'Meeting',
+          vikunjaTaskId: 5,
+          startDate: '2026-10-02T07:00:00.000Z',
+          endDate: '2026-10-02T08:00:00.000Z',
+          tags: ['alice', 'focus'],
+          descriptionLines: [],
+          children: [],
+        },
+      ],
+      'https://vikunja.example',
+    );
+    expect(markdown).toContain('#alice #focus');
+    expect(markdown.indexOf('📅')).toBeLessThan(markdown.indexOf('#alice'));
   });
 
   it('replaces root blocks and appends new ones', () => {
@@ -795,4 +820,187 @@ describe('syncAllMappings', () => {
 
     expect(notes2.get('Tasks.md')).toContain('- [/] [Work]');
   });
+
+  it('syncs assignee tags: pull, push, Obsidian wins, and skips both-done', async () => {
+    const mappings = [{ vikunjaUserId: 3, label: 'Alice', obsidianTag: 'alice' }];
+    const key = mappingKey('Tasks.md', 1);
+
+    // Pull: Vikunja assignee → Obsidian #alice
+    const notesPull = new Map<string, string>([
+      ['Tasks.md', '- [ ] [Work](https://vikunja.example/tasks/5) #focus\n'],
+    ]);
+    const ledgerPull = emptyLedger();
+    ledgerPull.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'todo',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+    const pullResult = await syncAllMappings(
+      [{ notePath: 'Tasks.md', projectId: 1 }],
+      ledgerPull,
+      [],
+      {
+        baseUrl: 'https://vikunja.example',
+        conflictPolicy: 'prefer-obsidian',
+        client: clientStub({
+          listProjectTasks: vi.fn().mockResolvedValue([
+            task({
+              id: 5,
+              title: 'Work',
+              labels: [{ id: 101, title: 'ToDo' }],
+              assignees: [{ id: 3, username: 'alice' }],
+            }),
+          ]),
+        }),
+        assigneeMappings: mappings,
+        readNote: async (path) => notesPull.get(path) ?? '',
+        writeNote: async (path, content) => {
+          notesPull.set(path, content);
+        },
+      },
+    );
+    expect(notesPull.get('Tasks.md')).toContain('#focus');
+    expect(notesPull.get('Tasks.md')).toContain('#alice');
+    expect(pullResult.mappings[0]?.actions.some((a) => a.kind === 'assignee-set-obsidian')).toBe(
+      true,
+    );
+
+    // Push: Obsidian #alice → Vikunja assignee
+    const addAssignee = vi.fn().mockResolvedValue(undefined);
+    const notesPush = new Map<string, string>([
+      ['Tasks.md', '- [ ] [Work](https://vikunja.example/tasks/5) #alice\n'],
+    ]);
+    const ledgerPush = emptyLedger();
+    ledgerPush.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'todo',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledgerPush, [], {
+      baseUrl: 'https://vikunja.example',
+      conflictPolicy: 'prefer-obsidian',
+      client: clientStub({
+        listProjectTasks: vi.fn().mockResolvedValue([
+          task({
+            id: 5,
+            title: 'Work',
+            labels: [{ id: 101, title: 'ToDo' }],
+            assignees: [],
+          }),
+        ]),
+        addAssignee,
+      }),
+      assigneeMappings: mappings,
+      readNote: async (path) => notesPush.get(path) ?? '',
+      writeNote: async (path, content) => {
+        notesPush.set(path, content);
+      },
+    });
+    expect(addAssignee).toHaveBeenCalledWith(5, 3);
+
+    // Obsidian wins on mismatch
+    const addAssignee2 = vi.fn().mockResolvedValue(undefined);
+    const removeAssignee = vi.fn().mockResolvedValue(undefined);
+    const notesConflict = new Map<string, string>([
+      ['Tasks.md', '- [ ] [Work](https://vikunja.example/tasks/5) #alice\n'],
+    ]);
+    const ledgerConflict = emptyLedger();
+    ledgerConflict.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'todo',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledgerConflict, [], {
+      baseUrl: 'https://vikunja.example',
+      conflictPolicy: 'prefer-vikunja',
+      client: clientStub({
+        listProjectTasks: vi.fn().mockResolvedValue([
+          task({
+            id: 5,
+            title: 'Work',
+            labels: [{ id: 101, title: 'ToDo' }],
+            assignees: [{ id: 7, username: 'bob' }],
+          }),
+        ]),
+        addAssignee: addAssignee2,
+        removeAssignee,
+      }),
+      assigneeMappings: [
+        ...mappings,
+        { vikunjaUserId: 7, label: 'Bob', obsidianTag: 'bob' },
+      ],
+      readNote: async (path) => notesConflict.get(path) ?? '',
+      writeNote: async (path, content) => {
+        notesConflict.set(path, content);
+      },
+    });
+    expect(removeAssignee).toHaveBeenCalledWith(5, 7);
+    expect(addAssignee2).toHaveBeenCalledWith(5, 3);
+    expect(notesConflict.get('Tasks.md')).toContain('#alice');
+    expect(notesConflict.get('Tasks.md')).not.toContain('#bob');
+
+    // Both done → skip
+    const addAssignee3 = vi.fn();
+    const notesDone = new Map<string, string>([
+      ['Tasks.md', '- [x] [Work](https://vikunja.example/tasks/5) #alice\n'],
+    ]);
+    const ledgerDone = emptyLedger();
+    ledgerDone.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'done',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+    const doneResult = await syncAllMappings(
+      [{ notePath: 'Tasks.md', projectId: 1 }],
+      ledgerDone,
+      [],
+      {
+        baseUrl: 'https://vikunja.example',
+        conflictPolicy: 'prefer-obsidian',
+        client: clientStub({
+          listProjectTasks: vi.fn().mockResolvedValue([
+            task({
+              id: 5,
+              title: 'Work',
+              done: true,
+              labels: [{ id: 102, title: 'Done' }],
+              assignees: [{ id: 7, username: 'bob' }],
+            }),
+          ]),
+          addAssignee: addAssignee3,
+        }),
+        assigneeMappings: [
+          ...mappings,
+          { vikunjaUserId: 7, label: 'Bob', obsidianTag: 'bob' },
+        ],
+        readNote: async (path) => notesDone.get(path) ?? '',
+        writeNote: async (path, content) => {
+          notesDone.set(path, content);
+        },
+      },
+    );
+    expect(addAssignee3).not.toHaveBeenCalled();
+    expect(
+      doneResult.mappings[0]?.actions.some(
+        (a) => a.kind === 'assignee-set-obsidian' || a.kind === 'assignee-set-vikunja',
+      ),
+    ).toBe(false);
+  });
 });
+

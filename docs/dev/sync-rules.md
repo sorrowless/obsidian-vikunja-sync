@@ -8,15 +8,17 @@ Synced fields:
 
 - Title
 - Description
-- Done state
+- Done state (workflow labels `ToDo` / `In Progress` / `Done`)
 - Parent / child nesting
 - Vikunja task URL in the Obsidian task line
 - Start / end times (`🛫` / `📅` after the link ↔ Vikunja `start_date` / `end_date`)
+- Single assignee via configured Vikunja user id ↔ Obsidian `#tag` mappings
 
 Not synced in v1:
 
-- Due dates, priority, labels, assignees, reminders, recurrence
-- Kanban buckets / board columns
+- Due dates, priority, reminders, recurrence
+- Arbitrary / unmapped labels (status labels above are synced)
+- Multi-assignee / Kanban buckets / board columns
 - Automatic deletion
 
 ## Task identity
@@ -36,7 +38,7 @@ Unlinked checklist items are candidates for create-in-Vikunja.
 After any successful sync write, a synced task block looks like:
 
 ```markdown
-- [ ] [Task title](https://vikunja.example/tasks/123) 🛫 2026-10-02 10:00 📅 2026-10-02 11:00
+- [ ] [Task title](https://vikunja.example/tasks/123) 🛫 2026-10-02 10:00 📅 2026-10-02 11:00 #alice
     - description line one
     - description line two
     - [ ] [Child title](https://vikunja.example/tasks/456)
@@ -45,14 +47,15 @@ After any successful sync write, a synced task block looks like:
 
 Rules:
 
-1. The primary line is a checklist item whose body starts with a link `[title](url)`, optionally followed by start/end date markers.
+1. The primary line is a checklist item whose body starts with a link `[title](url)`, optionally followed by start/end date markers and tags.
 2. Start (`🛫`) and end (`📅`) times are written after the link; they are not part of the link text.
-3. Description is represented as indented bullets **without** checkboxes.
-4. Child tasks are indented checklist items (with checkboxes).
-5. On rewrite, description lines come first, then child tasks.
-6. Existing list marker (`-`, `*`, or numbered) and indent style are preserved for an existing block.
-7. Newly created blocks use `-` and four spaces per indent level.
-8. New Obsidian tasks created from Vikunja are appended at the end of the mapped note.
+3. A mapped assignee tag (`#alice`) is written after the date suffix when configured; unmapped tags are preserved.
+4. Description is represented as indented bullets **without** checkboxes.
+5. Child tasks are indented checklist items (with checkboxes).
+6. On rewrite, description lines come first, then child tasks.
+7. Existing list marker (`-`, `*`, or numbered) and indent style are preserved for an existing block.
+8. Newly created blocks use `-` and four spaces per indent level.
+9. New Obsidian tasks created from Vikunja are appended at the end of the mapped note.
 
 ## Done / workflow status
 
@@ -67,6 +70,22 @@ Status is synced through Vikunja **labels** (not Kanban buckets):
 When Obsidian status changes, the plugin removes **all** labels on the task (including non-canonical ones such as `review`, because any non-ToDo/Done label means In Progress when reading) and attaches the matching canonical label. New tasks created from Obsidian get a `ToDo` label.
 
 `done` on the Vikunja task is kept aligned (`true` only for `Done`). Other Obsidian checkbox characters (for example `[-]`) are not mapped to labels.
+
+## Assignees
+
+Assignees sync through settings mappings (`vikunjaUserId` ↔ `obsidianTag`). Cardinality is one mapped assignee per task. The settings UI discovers candidates via `GET /projects/{id}/projectusers` (mapped projects, else all projects) and presents a dropdown.
+
+Reconcile runs after status/content classification for a linked pair, and is skipped only when **both** sides are Done (`[x]` / label `Done`).
+
+| Local mapped tag | Remote mapped assignee | Action |
+| --- | --- | --- |
+| none | mapped user | Pull: set Obsidian `#tag` from mapping |
+| mapped tag | none | Push: add Vikunja assignee |
+| mapped A | mapped B ≠ A | Obsidian wins: replace Vikunja assignee; keep Obsidian tag |
+| none | unmapped only | no-op |
+| unmapped tag only | anything | treat local as none for assignee sync |
+
+Assignee is **not** part of the content hash used for title/description/status conflicts. Dry-run reports `Would set Obsidian assignee tag` / `Would set Vikunja assignee`.
 
 ## Nesting
 

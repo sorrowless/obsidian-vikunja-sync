@@ -6,10 +6,20 @@ export interface NoteProjectMapping {
   projectId: number;
 }
 
+/** Maps a Vikunja user (assignee) to a single Obsidian `#tag`. */
+export interface AssigneeMapping {
+  vikunjaUserId: number;
+  /** Display-only label (username / name). */
+  label: string;
+  /** Obsidian tag without leading `#`, e.g. `alice`. */
+  obsidianTag: string;
+}
+
 export interface PluginSettings {
   vikunjaBaseUrl: string;
   vikunjaApiToken: string;
   mappings: NoteProjectMapping[];
+  assigneeMappings: AssigneeMapping[];
   conflictPolicy: ConflictPolicy;
   syncOnStartup: boolean;
   syncIntervalEnabled: boolean;
@@ -24,6 +34,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   vikunjaBaseUrl: '',
   vikunjaApiToken: '',
   mappings: [],
+  assigneeMappings: [],
   conflictPolicy: 'prefer-obsidian',
   syncOnStartup: false,
   syncIntervalEnabled: false,
@@ -57,6 +68,84 @@ export function createEmptyMapping(): NoteProjectMapping {
     notePath: '',
     projectId: 0,
   };
+}
+
+export function createEmptyAssigneeMapping(): AssigneeMapping {
+  return {
+    vikunjaUserId: 0,
+    label: '',
+    obsidianTag: '',
+  };
+}
+
+/** Strip leading `#`, trim, NFC-normalize. Case is preserved as typed. */
+export function normalizeObsidianTag(tag: string): string {
+  return tag.trim().replace(/^#+/, '').normalize('NFC');
+}
+
+export function isAssigneeMappingBlank(mapping: AssigneeMapping): boolean {
+  return !(mapping.vikunjaUserId > 0) && normalizeObsidianTag(mapping.obsidianTag).length === 0;
+}
+
+export function isAssigneeMappingComplete(mapping: AssigneeMapping): boolean {
+  return mapping.vikunjaUserId > 0 && normalizeObsidianTag(mapping.obsidianTag).length > 0;
+}
+
+/**
+ * Normalize assignee mapping fields in place (same identity rules as note mappings).
+ */
+export function prepareAssigneeMappingsForSave(mappings: AssigneeMapping[]): void {
+  for (const mapping of mappings) {
+    mapping.label = mapping.label.trim().normalize('NFC');
+    mapping.obsidianTag = normalizeObsidianTag(mapping.obsidianTag);
+    if (!Number.isFinite(mapping.vikunjaUserId) || mapping.vikunjaUserId < 0) {
+      mapping.vikunjaUserId = 0;
+    } else {
+      mapping.vikunjaUserId = Math.floor(mapping.vikunjaUserId);
+    }
+  }
+}
+
+/** Case-insensitive tag lookup against configured assignee mappings. */
+export function findAssigneeMappingByTag(
+  mappings: readonly AssigneeMapping[],
+  tag: string,
+): AssigneeMapping | null {
+  const needle = normalizeObsidianTag(tag).toLowerCase();
+  if (!needle) {
+    return null;
+  }
+  for (const mapping of mappings) {
+    if (normalizeObsidianTag(mapping.obsidianTag).toLowerCase() === needle) {
+      return mapping;
+    }
+  }
+  return null;
+}
+
+export function findAssigneeMappingByUserId(
+  mappings: readonly AssigneeMapping[],
+  userId: number,
+): AssigneeMapping | null {
+  if (!(userId > 0)) {
+    return null;
+  }
+  for (const mapping of mappings) {
+    if (mapping.vikunjaUserId === userId) {
+      return mapping;
+    }
+  }
+  return null;
+}
+
+/**
+ * Suggest an Obsidian tag from a Vikunja username (lowercase, safe chars).
+ */
+export function suggestObsidianTagFromUsername(username: string): string {
+  return normalizeObsidianTag(username)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_/-]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 /** Normalize a vault-relative note path from settings. Spaces in names are kept. */

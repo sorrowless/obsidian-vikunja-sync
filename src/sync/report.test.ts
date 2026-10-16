@@ -76,4 +76,49 @@ describe('sync report formatting', () => {
     expect(report).toContain('Errors');
     expect(report).toContain('Note not found: Tasks/Work.md');
   });
+
+  it('formats assignee dry-run actions', () => {
+    const report = formatSyncReport(
+      sampleResult({
+        mappings: [
+          {
+            notePath: 'Tasks.md',
+            projectId: 1,
+            counts: {
+              createdRemote: 0,
+              createdLocal: 0,
+              pushed: 0,
+              pulled: 0,
+              conflictsResolved: 0,
+              unchanged: 1,
+              unresolvedRemovals: 0,
+              recoveredPendingLinks: 0,
+            },
+            actions: [
+              {
+                kind: 'assignee-set-obsidian',
+                title: 'Work',
+                taskId: 5,
+                detail: '#alice ← Vikunja user 3',
+              },
+              {
+                kind: 'assignee-set-vikunja',
+                title: 'Other',
+                taskId: 6,
+                detail: 'user 3 ← #alice',
+              },
+            ],
+            errors: [],
+            unresolvedTaskIds: [],
+            pendingLinks: [],
+          },
+        ],
+      }),
+    );
+    expect(report).toContain('Would set Obsidian assignee tag');
+    expect(report).toContain('Would set Vikunja assignee');
+    expect(report).toContain('Work [#5]');
+    expect(report).toContain('#alice ← Vikunja user 3');
+  });
 });
+

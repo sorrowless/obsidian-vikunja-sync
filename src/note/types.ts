@@ -29,6 +29,8 @@ export interface ParsedTaskNode {
   startDate: string | null;
   /** ISO UTC end time, or null when unset. Synced to Vikunja `end_date`. */
   endDate: string | null;
+  /** `#tag` names on the task line (without `#`), in appearance order. */
+  tags: string[];
   /** Indented non-checkbox bullets under this task (description). */
   descriptionLines: string[];
   /** Source line indices for descriptionLines (parallel array). */

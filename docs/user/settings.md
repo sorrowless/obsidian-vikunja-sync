@@ -19,6 +19,19 @@ One note maps to one project. Tasks in that note sync with that project only.
 
 In Vikunja, a board is a view of a project. Sync targets the project’s tasks, not a specific Kanban column.
 
+## Assignee ↔ tag mappings
+
+Each row maps one Vikunja user to one Obsidian tag (e.g. Alice → `#alice`).
+
+Users are **loaded automatically** from Vikunja (`Refresh users` reloads the list): members of your note ↔ project mappings when those are set, otherwise users from all projects the API token can see. Pick a user from the dropdown; if the Obsidian tag field is empty, it is filled from the username.
+
+| Field | Description |
+| --- | --- |
+| Vikunja user | Dropdown of discovered users |
+| Obsidian tag | Tag without leading `#` (leading `#` is stripped on save) |
+
+Only mapped assignees sync. One assignee per task. Sync runs on open tasks; when **both** sides are Done (`[x]` / label `Done`), assignees are left alone. If Obsidian and Vikunja disagree on a mapped assignee, Obsidian wins. Unmapped Vikunja users and unmapped `#tags` are ignored for assignee sync (unmapped tags stay on the line).
+
 ## Conflict policy
 
 When the same linked task changed both in Obsidian and in Vikunja since the last successful sync:

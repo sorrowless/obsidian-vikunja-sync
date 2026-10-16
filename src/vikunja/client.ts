@@ -10,6 +10,7 @@ import {
   type VikunjaProject,
   type VikunjaRelationKind,
   type VikunjaTask,
+  type VikunjaUser,
 } from './types';
 
 export interface VikunjaClientOptions {
@@ -140,6 +141,53 @@ export class VikunjaClient {
 
   async removeLabelFromTask(taskId: number, labelId: number): Promise<void> {
     await this.request('DELETE', `/tasks/${taskId}/labels/${labelId}`);
+  }
+
+  async addAssignee(taskId: number, userId: number): Promise<void> {
+    await this.request('PUT', `/tasks/${taskId}/assignees`, { user_id: userId });
+  }
+
+  async removeAssignee(taskId: number, userId: number): Promise<void> {
+    await this.request('DELETE', `/tasks/${taskId}/assignees/${userId}`);
+  }
+
+  /**
+   * Users who can access a project (owner, direct share, teams, parent projects).
+   * `GET /projects/{id}/projectusers`
+   */
+  async listProjectUsers(projectId: number): Promise<VikunjaUser[]> {
+    const raw = await this.request<unknown>('GET', `/projects/${projectId}/projectusers`);
+    return normalizeAssignees(raw);
+  }
+
+  /**
+   * Discover assignee candidates across projects (deduped by id, sorted by label).
+   * When `projectIds` is empty, uses every project returned by `listProjects()`.
+   */
+  async listUsersForProjects(projectIds?: readonly number[]): Promise<VikunjaUser[]> {
+    let ids = [...new Set((projectIds ?? []).filter((id) => id > 0))];
+    if (ids.length === 0) {
+      const projects = await this.listProjects();
+      ids = projects.map((project) => project.id).filter((id) => id > 0);
+    }
+
+    const byId = new Map<number, VikunjaUser>();
+    for (const projectId of ids) {
+      try {
+        const users = await this.listProjectUsers(projectId);
+        for (const user of users) {
+          if (!byId.has(user.id)) {
+            byId.set(user.id, user);
+          }
+        }
+      } catch {
+        // Skip projects the token cannot read; other projects may still succeed.
+      }
+    }
+
+    return [...byId.values()].sort((a, b) =>
+      formatUserLabel(a).localeCompare(formatUserLabel(b), undefined, { sensitivity: 'base' }),
+    );
   }
 
   async createRelation(taskId: number, input: CreateRelationInput): Promise<void> {
@@ -318,8 +366,41 @@ function normalizeTask(raw: Record<string, unknown>): VikunjaTask | null {
     start_date: normalizeVikunjaDate(raw.start_date),
     end_date: normalizeVikunjaDate(raw.end_date),
     labels: normalizeLabels(raw.labels),
+    assignees: normalizeAssignees(raw.assignees),
     related_tasks,
   };
+}
+
+function normalizeUser(raw: Record<string, unknown>): VikunjaUser | null {
+  const id = Number(raw.id);
+  if (!Number.isFinite(id)) {
+    return null;
+  }
+  return {
+    id,
+    username: typeof raw.username === 'string' ? raw.username : '',
+    name: typeof raw.name === 'string' ? raw.name : undefined,
+  };
+}
+
+/** Display label for dropdowns: "Name (username)" or username alone. */
+export function formatUserLabel(user: Pick<VikunjaUser, 'username' | 'name'>): string {
+  const username = user.username.trim();
+  const name = (user.name ?? '').trim();
+  if (name && username && name.toLowerCase() !== username.toLowerCase()) {
+    return `${name} (${username})`;
+  }
+  return name || username || 'user';
+}
+
+function normalizeAssignees(raw: unknown): VikunjaUser[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map(normalizeUser)
+    .filter((user): user is VikunjaUser => user !== null);
 }
 
 function normalizeLabel(raw: Record<string, unknown>): VikunjaLabel | null {

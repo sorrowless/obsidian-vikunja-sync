@@ -3,6 +3,8 @@ import { VikunjaSyncSettingTab } from './settings-tab';
 import {
   DEFAULT_SETTINGS,
   normalizeMappingPath,
+  normalizeObsidianTag,
+  prepareAssigneeMappingsForSave,
   prepareMappingsForSave,
   syncIntervalToMilliseconds,
   type PluginSettings,
@@ -15,7 +17,7 @@ import { SyncReportModal } from './sync/report-modal';
 import { pathsReferToSameNote, resolveMarkdownFile } from './vault/resolve-note';
 import { VikunjaClient } from './vikunja/client';
 import { createObsidianRequestTransport } from './vikunja/http';
-import { VikunjaApiError } from './vikunja/types';
+import { VikunjaApiError, type VikunjaUser } from './vikunja/types';
 
 interface PluginData {
   settings: PluginSettings;
@@ -109,6 +111,7 @@ export default class VikunjaSyncPlugin extends Plugin {
     // The settings tab keeps indexes/closures over those references; replacing
     // them drops subsequent edits (project id / path with spaces looked “unsaved”).
     prepareMappingsForSave(this.settings.mappings);
+    prepareAssigneeMappingsForSave(this.settings.assigneeMappings);
     await this.savePluginData();
     this.restartScheduler();
   }
@@ -170,6 +173,24 @@ export default class VikunjaSyncPlugin extends Plugin {
     }
   }
 
+  /**
+   * Load Vikunja users for the assignee picker (mapped projects, else all projects).
+   */
+  async discoverAssigneeUsers(): Promise<
+    { ok: true; users: VikunjaUser[] } | { ok: false; message: string }
+  > {
+    try {
+      const client = this.createVikunjaClient();
+      const mappedIds = this.settings.mappings
+        .map((mapping) => mapping.projectId)
+        .filter((id) => id > 0);
+      const users = await client.listUsersForProjects(mappedIds);
+      return { ok: true, users };
+    } catch (error) {
+      return { ok: false, message: formatConnectionError(error) };
+    }
+  }
+
   async requestSync(reason: string, dryRun: boolean): Promise<void> {
     await this.coordinator.request(reason, dryRun, async (activeReason, activeDryRun) => {
       await this.runSync(activeReason, activeDryRun);
@@ -210,6 +231,7 @@ export default class VikunjaSyncPlugin extends Plugin {
           conflictPolicy: this.settings.conflictPolicy,
           client,
           dryRun,
+          assigneeMappings: this.settings.assigneeMappings,
           readNote: async (path) => {
             const file = resolveMarkdownFile(this.app, path);
             return this.app.vault.read(file);
@@ -298,6 +320,18 @@ function normalizeSettings(saved: Partial<PluginSettings>): PluginSettings {
             typeof mapping?.projectId === 'number' && Number.isFinite(mapping.projectId)
               ? mapping.projectId
               : 0,
+        }))
+      : [],
+    assigneeMappings: Array.isArray(saved.assigneeMappings)
+      ? saved.assigneeMappings.map((mapping) => ({
+          vikunjaUserId:
+            typeof mapping?.vikunjaUserId === 'number' && Number.isFinite(mapping.vikunjaUserId)
+              ? Math.floor(mapping.vikunjaUserId)
+              : 0,
+          label: typeof mapping?.label === 'string' ? mapping.label.trim() : '',
+          obsidianTag: normalizeObsidianTag(
+            typeof mapping?.obsidianTag === 'string' ? mapping.obsidianTag : '',
+          ),
         }))
       : [],
     dryRunDefault: Boolean(saved.dryRunDefault),

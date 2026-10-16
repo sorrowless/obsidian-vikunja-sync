@@ -8,7 +8,9 @@ export type SyncActionKind =
   | 'unchanged'
   | 'unresolved-missing-remote'
   | 'unresolved-missing-local'
-  | 'recovered-pending';
+  | 'recovered-pending'
+  | 'assignee-set-obsidian'
+  | 'assignee-set-vikunja';
 
 export interface SyncActionDetail {
   kind: SyncActionKind;
@@ -46,6 +48,10 @@ export function formatActionLabel(kind: SyncActionKind, dryRun: boolean): string
       return 'Unresolved — known from ledger, missing in note';
     case 'recovered-pending':
       return `${prefix}relink pending Vikunja task`;
+    case 'assignee-set-obsidian':
+      return `${prefix}set Obsidian assignee tag`;
+    case 'assignee-set-vikunja':
+      return `${prefix}set Vikunja assignee`;
     default: {
       const _exhaustive: never = kind;
       return String(_exhaustive);
@@ -62,6 +68,8 @@ export const ACTION_REPORT_ORDER: SyncActionKind[] = [
   'conflict-push',
   'conflict-pull',
   'recovered-pending',
+  'assignee-set-obsidian',
+  'assignee-set-vikunja',
   'unresolved-missing-remote',
   'unresolved-missing-local',
   // 'unchanged' intentionally omitted from detailed lists by default

@@ -1,5 +1,6 @@
 import { taskPageUrl } from '../vikunja/urls';
 import { formatTaskDatesSuffix } from '../note/dates';
+import { formatTaskTagsSuffix } from '../note/tags';
 import { checkboxFromStatus } from './status';
 
 export interface RenderableTask {
@@ -10,6 +11,8 @@ export interface RenderableTask {
   vikunjaTaskId: number | null;
   startDate?: string | null;
   endDate?: string | null;
+  /** Tags to write (without `#`), including the assignee tag when set. */
+  tags?: string[];
   descriptionLines: string[];
   children: RenderableTask[];
 }
@@ -38,7 +41,10 @@ export function renderTask(
     task.vikunjaTaskId !== null
       ? `[${task.title}](${taskPageUrl(baseUrl, task.vikunjaTaskId)})`
       : task.title;
-  const body = `${linkOrTitle}${formatTaskDatesSuffix(task.startDate ?? null, task.endDate ?? null)}`;
+  const body = `${linkOrTitle}${formatTaskDatesSuffix(
+    task.startDate ?? null,
+    task.endDate ?? null,
+  )}${formatTaskTagsSuffix(task.tags ?? [])}`;
   lines.push(`${task.indent}${task.listMarker} [${task.checkboxChar}] ${body}`);
 
   const childIndent = `${task.indent}${indentUnit}`;

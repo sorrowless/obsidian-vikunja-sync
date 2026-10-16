@@ -101,4 +101,14 @@ describe('parseNoteTasks', () => {
     expect(task?.startDate).toBeTruthy();
     expect(task?.endDate).toBeTruthy();
   });
+
+  it('parses tags after dates on linked tasks', () => {
+    const markdown =
+      '- [ ] [Buy milk](https://vikunja.example/tasks/42) 🛫 2026-10-02 10:00 📅 2026-10-02 12:00 #alice #focus';
+    const [task] = parseNoteTasks(markdown, { vikunjaBaseUrl: BASE });
+    expect(task?.title).toBe('Buy milk');
+    expect(task?.vikunjaTaskId).toBe(42);
+    expect(task?.tags).toEqual(['alice', 'focus']);
+  });
 });
+

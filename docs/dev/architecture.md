@@ -11,12 +11,12 @@ This document describes the architecture for the Obsidian ↔ Vikunja sync plugi
 
 ## Non-goals (v1)
 
-- Syncing due dates, priority, labels, assignees, reminders, recurrence, or Kanban buckets.
+- Syncing due dates, priority, reminders, recurrence, multi-assignee, or Kanban buckets.
 - Automatic deletion on either side when a previously synced task disappears.
 - Mapping one note to multiple Vikunja projects, or one project to multiple notes.
 - Using Vikunja API v2 (v1 only; v2 may be added later as an adapter).
 
-Start/end times (`🛫` / `📅` ↔ Vikunja `start_date` / `end_date`) are synced.
+Start/end times (`🛫` / `📅` ↔ Vikunja `start_date` / `end_date`), workflow status labels, and a single mapped assignee (`#tag` ↔ Vikunja user) are synced.
 
 ## High-level components
 
