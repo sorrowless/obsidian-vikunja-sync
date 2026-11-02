@@ -86,9 +86,10 @@ After a rewrite, description bullets are ordered before child tasks.
 | --- | --- | --- |
 | `[ ]` | To-Do | label `ToDo` |
 | `[/]` | In progress | label `In Progress` |
+| `[?]` | Review | label `Review` |
 | `[x]` or `[X]` | Done | label `Done` |
 
-When reading from Vikunja: `Done` → `[x]`, `ToDo` → `[ ]`, any other label(s) → `[/]`. Other checkbox characters (for example `[-]`) are left alone and are not treated as status sync.
+When reading from Vikunja: `Done` → `[x]`, `ToDo` → `[ ]`, `Review` → `[?]`, `In Progress` → `[/]`; any other non-canonical label(s) → `[/]`. Other checkbox characters (for example `[-]`) are left alone and are not treated as status sync.
 
 ## List markers and indentation
 

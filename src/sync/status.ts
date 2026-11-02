@@ -3,29 +3,37 @@
  *
  * Canonical progress labels (written by sync):
  *   ToDo         ↔ `[ ]`
- *   Done         ↔ `[x]` / `[X]`
  *   In Progress  ↔ `[/]`
+ *   Review       ↔ `[?]`
+ *   Done         ↔ `[x]` / `[X]`
  *
- * Reading: Done > ToDo > any other label(s) → in progress > no labels → todo.
- * Writing: remove every label on the task (any non-ToDo/Done label counts as a
- * progress/status label when reading), then attach exactly one canonical label.
+ * Reading: Done > ToDo > Review > In Progress (explicit) > any other label(s)
+ * → in progress > no labels → todo.
+ * Writing: remove every non-desired label, then attach exactly one canonical label.
  */
 
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
 
 export const STATUS_LABEL_TODO = 'ToDo';
 export const STATUS_LABEL_DONE = 'Done';
 export const STATUS_LABEL_IN_PROGRESS = 'In Progress';
+export const STATUS_LABEL_REVIEW = 'Review';
 
 /** Labels that represent workflow status and are swapped on sync. */
 export const PROGRESS_LABEL_TITLES = [
   STATUS_LABEL_TODO,
   STATUS_LABEL_DONE,
   STATUS_LABEL_IN_PROGRESS,
+  STATUS_LABEL_REVIEW,
 ] as const;
 
 export function isTaskStatus(value: unknown): value is TaskStatus {
-  return value === 'todo' || value === 'in_progress' || value === 'done';
+  return (
+    value === 'todo' ||
+    value === 'in_progress' ||
+    value === 'review' ||
+    value === 'done'
+  );
 }
 
 /** Map an Obsidian checkbox character to a synced status. */
@@ -39,6 +47,9 @@ export function statusFromCheckbox(checkboxChar: string): TaskStatus | null {
   if (checkboxChar === '/') {
     return 'in_progress';
   }
+  if (checkboxChar === '?') {
+    return 'review';
+  }
   // Other characters (e.g. `-`) are not part of the sync contract.
   return null;
 }
@@ -50,6 +61,8 @@ export function checkboxFromStatus(status: TaskStatus): string {
       return ' ';
     case 'in_progress':
       return '/';
+    case 'review':
+      return '?';
     case 'done':
       return 'x';
     default: {
@@ -65,6 +78,8 @@ export function labelTitleForStatus(status: TaskStatus): string {
       return STATUS_LABEL_TODO;
     case 'in_progress':
       return STATUS_LABEL_IN_PROGRESS;
+    case 'review':
+      return STATUS_LABEL_REVIEW;
     case 'done':
       return STATUS_LABEL_DONE;
     default: {
@@ -81,7 +96,7 @@ export function isProgressLabelTitle(title: string): boolean {
 
 /**
  * Derive status from Vikunja task labels.
- * Done / ToDo win when present; any other label(s) mean in progress;
+ * Done > ToDo > Review > In Progress (explicit) > any other → in progress;
  * no labels default to todo.
  */
 export function statusFromLabels(
@@ -93,6 +108,12 @@ export function statusFromLabels(
   }
   if (titles.includes(STATUS_LABEL_TODO.toLowerCase())) {
     return 'todo';
+  }
+  if (titles.includes(STATUS_LABEL_REVIEW.toLowerCase())) {
+    return 'review';
+  }
+  if (titles.includes(STATUS_LABEL_IN_PROGRESS.toLowerCase())) {
+    return 'in_progress';
   }
   if (titles.length > 0) {
     return 'in_progress';

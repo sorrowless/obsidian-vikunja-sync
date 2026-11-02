@@ -9,11 +9,12 @@ describe('parseNoteTasks', () => {
 - [ ] Buy milk
 - [x] [Done thing](https://vikunja.example/tasks/9)
 - [/] In progress thing
+- [?] Review thing
 - [-] Cancelled thing
 `.trim();
 
     const tasks = parseNoteTasks(markdown, { vikunjaBaseUrl: BASE });
-    expect(tasks).toHaveLength(4);
+    expect(tasks).toHaveLength(5);
     expect(tasks[0]).toMatchObject({
       title: 'Buy milk',
       done: false,
@@ -35,6 +36,13 @@ describe('parseNoteTasks', () => {
       vikunjaTaskId: null,
     });
     expect(tasks[3]).toMatchObject({
+      title: 'Review thing',
+      done: false,
+      status: 'review',
+      checkboxChar: '?',
+      vikunjaTaskId: null,
+    });
+    expect(tasks[4]).toMatchObject({
       title: 'Cancelled thing',
       done: null,
       status: null,

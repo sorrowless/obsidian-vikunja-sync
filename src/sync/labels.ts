@@ -5,9 +5,9 @@ import { labelTitleForStatus, type TaskStatus } from './status';
 /**
  * Ensures the task carries exactly one status label for `status`.
  *
- * Because any non-ToDo/Done label is treated as In Progress when reading,
- * every other label is removed. The desired label is added only when it is
- * not already present (Vikunja rejects duplicate label attachments).
+ * Non-desired labels are removed (canonical workflow labels and any others).
+ * The desired label is added only when it is not already present (Vikunja
+ * rejects duplicate label attachments).
  */
 export async function applyStatusLabel(
   client: VikunjaClient,

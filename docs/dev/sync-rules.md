@@ -8,7 +8,7 @@ Synced fields:
 
 - Title
 - Description
-- Done state (workflow labels `ToDo` / `In Progress` / `Done`)
+- Done state (workflow labels `ToDo` / `In Progress` / `Review` / `Done`)
 - Parent / child nesting
 - Vikunja task URL in the Obsidian task line
 - Start / end times (`🛫` / `📅` after the link ↔ Vikunja `start_date` / `end_date`)
@@ -64,10 +64,13 @@ Status is synced through Vikunja **labels** (not Kanban buckets):
 | Obsidian | Vikunja progress label |
 | --- | --- |
 | `[ ]` | `ToDo` |
-| `[/]` | `In Progress` (or any non-ToDo/Done label when reading) |
+| `[/]` | `In Progress` |
+| `[?]` | `Review` |
 | `[x]` or `[X]` | `Done` |
 
-When Obsidian status changes, the plugin removes **all** labels on the task (including non-canonical ones such as `review`, because any non-ToDo/Done label means In Progress when reading) and attaches the matching canonical label. New tasks created from Obsidian get a `ToDo` label.
+Reading priority when multiple labels are present: **Done > ToDo > Review > In Progress > any other non-canonical label → In Progress > no labels → ToDo**.
+
+When Obsidian status changes, the plugin removes non-desired labels (including non-canonical ones) and attaches the matching canonical label. New tasks created from Obsidian get a `ToDo` label.
 
 `done` on the Vikunja task is kept aligned (`true` only for `Done`). Other Obsidian checkbox characters (for example `[-]`) are not mapped to labels.
 

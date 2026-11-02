@@ -39,6 +39,7 @@ function clientStub(overrides: Record<string, unknown> = {}): VikunjaClient {
       { id: 101, title: 'ToDo' },
       { id: 102, title: 'Done' },
       { id: 103, title: 'In Progress' },
+      { id: 104, title: 'Review' },
     ]),
     createLabel: vi.fn(),
     addLabelToTask: vi.fn().mockResolvedValue(undefined),
@@ -819,6 +820,126 @@ describe('syncAllMappings', () => {
     });
 
     expect(notes2.get('Tasks.md')).toContain('- [/] [Work]');
+  });
+
+  it('pushes review [?] as Review label and pulls Review back', async () => {
+    const key = mappingKey('Tasks.md', 1);
+    const ledger = emptyLedger();
+    ledger.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'todo',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+
+    const notes = new Map<string, string>([
+      ['Tasks.md', '- [?] [Work](https://vikunja.example/tasks/5)\n'],
+    ]);
+    const updateTask = vi.fn().mockResolvedValue(
+      task({
+        id: 5,
+        title: 'Work',
+        done: false,
+        labels: [{ id: 101, title: 'ToDo' }],
+        updated: '2026-04-01T00:00:00Z',
+      }),
+    );
+    const removeLabelFromTask = vi.fn().mockResolvedValue(undefined);
+    const addLabelToTask = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      listProjectTasks: vi.fn().mockResolvedValue([
+        task({ id: 5, title: 'Work', labels: [{ id: 101, title: 'ToDo' }] }),
+      ]),
+      createTask: vi.fn(),
+      updateTask,
+      createRelation: vi.fn(),
+      deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+        { id: 104, title: 'Review' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask,
+      removeLabelFromTask,
+    } as unknown as VikunjaClient;
+
+    const pushResult = await syncAllMappings(
+      [{ notePath: 'Tasks.md', projectId: 1 }],
+      ledger,
+      [],
+      {
+        baseUrl: 'https://vikunja.example',
+        conflictPolicy: 'prefer-obsidian',
+        client,
+        readNote: async (path) => notes.get(path) ?? '',
+        writeNote: async (path, content) => {
+          notes.set(path, content);
+        },
+      },
+    );
+
+    expect(pushResult.mappings[0]?.counts.pushed).toBe(1);
+    expect(updateTask).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ done: false }),
+    );
+    expect(removeLabelFromTask).toHaveBeenCalledWith(5, 101);
+    expect(addLabelToTask).toHaveBeenCalledWith(5, 104);
+
+    const notes2 = new Map<string, string>([
+      ['Tasks.md', '- [ ] [Work](https://vikunja.example/tasks/5)\n'],
+    ]);
+    const ledger2 = emptyLedger();
+    ledger2.entries[ledgerEntryKey(key, 5)] = makeLedgerEntry({
+      taskId: 5,
+      mappingKey: key,
+      title: 'Work',
+      description: '',
+      status: 'todo',
+      parentTaskId: null,
+      vikunjaUpdated: '2026-01-01T00:00:00Z',
+    });
+    const client2 = {
+      listProjectTasks: vi.fn().mockResolvedValue([
+        task({
+          id: 5,
+          title: 'Work',
+          done: false,
+          labels: [{ id: 104, title: 'Review' }],
+          updated: '2026-05-01T00:00:00Z',
+        }),
+      ]),
+      createTask: vi.fn(),
+      updateTask: vi.fn(),
+      createRelation: vi.fn(),
+      deleteRelation: vi.fn(),
+      listLabels: vi.fn().mockResolvedValue([
+        { id: 101, title: 'ToDo' },
+        { id: 102, title: 'Done' },
+        { id: 103, title: 'In Progress' },
+        { id: 104, title: 'Review' },
+      ]),
+      createLabel: vi.fn(),
+      addLabelToTask: vi.fn(),
+      removeLabelFromTask: vi.fn(),
+    } as unknown as VikunjaClient;
+
+    await syncAllMappings([{ notePath: 'Tasks.md', projectId: 1 }], ledger2, [], {
+      baseUrl: 'https://vikunja.example',
+      conflictPolicy: 'prefer-vikunja',
+      client: client2,
+      readNote: async (path) => notes2.get(path) ?? '',
+      writeNote: async (path, content) => {
+        notes2.set(path, content);
+      },
+    });
+
+    expect(notes2.get('Tasks.md')).toContain('- [?] [Work]');
   });
 
   it('syncs assignee tags: pull, push, Obsidian wins, and skips both-done', async () => {
