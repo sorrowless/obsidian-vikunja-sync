@@ -1,10 +1,10 @@
 {
-  "id": "obsidian-vikunja-sync",
-  "name": "Vikunja Sync",
-  "version": "1.0.3",
-  "minAppVersion": "1.5.0",
-  "description": "Bidirectional sync between Obsidian checklist tasks and Vikunja projects.",
-  "author": "Stan Bogatkin",
-  "authorUrl": "https://github.com/sorrowless",
-  "isDesktopOnly": false
+	"id": "obsidian-vikunja-sync",
+	"name": "Vikunja Sync",
+	"version": "1.0.4",
+	"minAppVersion": "1.5.0",
+	"description": "Bidirectional sync between Obsidian checklist tasks and Vikunja projects.",
+	"author": "Stan Bogatkin",
+	"authorUrl": "https://github.com/sorrowless",
+	"isDesktopOnly": false
 }
